@@ -845,7 +845,7 @@ export default class RestClientPlugin extends React.PureComponent {
           </div>
         </div>
         <pre className="rc-code-body">{payloadCode(this.state, lang)}</pre>
-        <p className="rc-code-note">Written as a native <code>{lang === 'js' ? 'javascript' : 'groovy'}</code> script input parameter that returns the payload — <code>{'${var}'}</code> becomes a process-variable reference.</p>
+        <p className="rc-code-note">Written as a native <code>{lang === 'js' ? 'javascript' : 'groovy'}</code> script input parameter that returns the payload, serialized with <b>Spin</b> (<code>JSON(…).toString()</code>). <code>{'${var}'}</code> becomes a process-variable reference.</p>
       </div>
     );
   }

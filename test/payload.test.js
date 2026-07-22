@@ -91,18 +91,20 @@ describe('payloadCode — payload as a script', () => {
       c('sizes', 'array', [n('', 'S'), n('', 'M')])
     ])
   };
-  it('Groovy: returns JsonOutput.toJson over a map literal; expression -> variable ref', () => {
+  it('Groovy: returns Spin JSON(...).toString() over a map literal; expression -> variable ref', () => {
     const g = payloadCode(st, 'groovy');
-    expect(g).toContain('import groovy.json.JsonOutput');
-    expect(g).toContain('JsonOutput.toJson(');
+    expect(g).toContain('JSON(');
+    expect(g).toContain(').toString()');
+    expect(g).not.toContain('JsonOutput');         // Spin, not Groovy's JsonOutput
     expect(g).not.toContain('def payload');        // return form, not an assignment
     expect(g).toContain("'orderId': orderId");     // expression becomes a bare var
     expect(g).toContain("'quantity': 3");
     expect(g).toContain("'sizes': [");
   });
-  it('JS: returns JSON.stringify over an object literal', () => {
+  it('JS: returns Spin JSON(...).toString() over an object literal', () => {
     const j = payloadCode(st, 'js');
-    expect(j).toContain('JSON.stringify(');
+    expect(j).toContain('JSON(');
+    expect(j).toContain(').toString()');
     expect(j).not.toContain('var payload');
     expect(j).toContain('"orderId": orderId');
     expect(j).toContain('"quantity": 3');

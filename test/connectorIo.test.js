@@ -80,7 +80,8 @@ describe('payload saved as a script', () => {
     expect(payload.value).toBeUndefined();
     expect(payload.definition.$type).toBe('camunda:Script');
     expect(payload.definition.scriptFormat).toBe('groovy');
-    expect(payload.definition.value).toContain('JsonOutput.toJson(');
+    expect(payload.definition.value).toContain('JSON(');
+    expect(payload.definition.value).toContain(').toString()');
     expect(payload.definition.value).toContain("'id': orderId");
   });
 });

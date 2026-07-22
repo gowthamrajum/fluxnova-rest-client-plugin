@@ -140,14 +140,14 @@ function codeNode(node, lang, indent) {
 
 // Generate a script (lang = 'groovy' | 'js') whose RESULT is the payload — the return
 // form a connector `camunda:script` input parameter uses (also what the preview shows).
-// Covers the JSON builder and the raw editor. null otherwise.
+// Object→JSON uses Camunda/FINOS Spin: the global `JSON(...)` builds a JSON document from
+// the object and `.toString()` serializes it (Spin's script functions are registered in
+// the engine's script env — no import needed). Covers the builder + raw editor.
 export function payloadCode(state, lang) {
   const js = lang === 'js';
   if (state.bodyType === 'json') {
     const lit = codeNode(state.jsonRoot || jsonRoot(), lang, 0);
-    return js
-      ? 'JSON.stringify(' + lit + ')'
-      : 'import groovy.json.JsonOutput\n\nJsonOutput.toJson(' + lit + ')';
+    return 'JSON(' + lit + ').toString()';
   }
   if (state.bodyType === 'raw') {
     const b = state.body || '';
