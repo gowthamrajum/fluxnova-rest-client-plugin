@@ -18,7 +18,7 @@ const { URL } = require('url');
 // Loopback port range the renderer scans (keep in sync with client/lib/constants.js).
 const PORT_BASE = 34517;
 const PORT_SPAN = 10;
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

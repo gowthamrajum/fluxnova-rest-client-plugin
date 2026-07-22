@@ -1,7 +1,7 @@
 {
   "name": "fluxnova-rest-client-plugin",
-  "version": "0.2.0",
-  "description": "Postman-style REST client popup for Connector Service Tasks in the FluxNova / Camunda 7 Modeler — build, send (CORS-free via a main-process proxy), map outputs, generate Groovy/JS, and save back to the connector.",
+  "version": "0.3.0",
+  "description": "Postman-style REST client popup for Connector Service Tasks in the FluxNova / Camunda 7 Modeler — build, send (CORS-free via a main-process proxy), map outputs, define technical & business exception handling, and save back to the connector.",
   "main": "index.js",
   "scripts": {
     "build": "webpack --mode production",

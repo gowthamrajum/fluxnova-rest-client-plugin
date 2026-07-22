@@ -165,11 +165,7 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-io-xcol .rc-del { padding: 6px 0; }
 .rc-io-empty td { color: var(--rc-faint); padding: 12px 10px; font-family: inherit; }
 
-/* ---------- Code Generator (deterministic, in-bundle) ---------- */
-.rc-gen { border-top: 1px dashed var(--rc-border-2); margin-top: 10px; padding-top: 10px; }
-.rc-gen-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.rc-gen-title { font-size: 12px; font-weight: 700; color: #374151; }
-
+/* segmented toggle (reused by the business-exception language switch) */
 .rc-seg { display: inline-flex; border: 1px solid var(--rc-border-2); border-radius: 6px; overflow: hidden; }
 .rc-seg button {
   border: none; background: #fff; cursor: pointer;
@@ -180,17 +176,42 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-seg button.on { background: var(--rc-orange); color: #fff; font-weight: 600; }
 .rc-seg.small button { padding: 3px 9px; }
 
-.rc-gen-scope { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.rc-gen-copy { border: 1px solid var(--rc-border-2); background: #fff; border-radius: 5px; cursor: pointer; font-size: 11px; padding: 4px 12px; color: var(--rc-muted); font-weight: 600; }
-.rc-gen-copy:hover { color: var(--rc-ink); border-color: var(--rc-muted); }
-
-.rc-gen-code {
-  font-family: var(--rc-mono); font-size: 11px; line-height: 1.55;
-  background: #0f172a; color: #e2e8f0; border-radius: 6px; padding: 10px 12px;
-  white-space: pre; overflow: auto; margin: 0; max-height: 260px;
+/* ---------- response-handling sub-tabs (Outputs / Technical / Business) ---------- */
+.rc-side-subtabs { display: flex; background: #f6f7f9; border-bottom: 1px solid var(--rc-border); }
+.rc-side-subtab {
+  flex: 1; border: none; background: transparent; cursor: pointer;
+  padding: 8px 6px; font-size: 11px; font-weight: 600; color: var(--rc-muted);
+  border-bottom: 2px solid transparent;
 }
-.rc-gen-note { font-size: 11px; color: var(--rc-faint); line-height: 1.5; margin: 6px 0 0; }
-.rc-gen-note code, .rc-gen-code code { background: none; padding: 0; }
+.rc-side-subtab:hover { color: var(--rc-ink); }
+.rc-side-subtab.active { color: var(--rc-orange-d); border-bottom-color: var(--rc-orange); background: #fff; }
+
+/* ---------- exception panels ---------- */
+.rc-exc { padding: 10px 12px; }
+.rc-exc-hint { font-size: 11px; color: var(--rc-faint); line-height: 1.5; margin: 0 0 10px; }
+.rc-exc-subhead { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
+.rc-exc-list { display: flex; flex-direction: column; gap: 6px; }
+.rc-exc-row { display: flex; align-items: center; gap: 6px; }
+.rc-exc-class { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.rc-exc-class b { font-size: 12px; color: var(--rc-ink); }
+.rc-exc-match { font-family: var(--rc-mono); font-size: 10px; color: var(--rc-faint); }
+.rc-exc-action { flex: 1; min-width: 0; font-size: 11px; padding: 5px 6px; }
+.rc-exc-row .rc-io-input, .rc-exc-codein { border: 1px solid var(--rc-border-2); border-radius: 5px; background: #fff; flex: 1; min-width: 0; }
+.rc-exc-err { flex: 1; min-width: 0; }
+.rc-exc-err.wide { width: 100%; margin-top: 6px; }
+
+/* business-exception script rows */
+.rc-biz-head { display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
+.rc-biz-row { border: 1px solid var(--rc-border-2); border-radius: 7px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.rc-biz-row-head { display: flex; align-items: center; gap: 6px; }
+.rc-biz-name { flex: 1; min-width: 0; border: 1px solid var(--rc-border-2); border-radius: 5px; background: #fff; }
+.rc-biz-script {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 70px;
+  font-family: var(--rc-mono); font-size: 11px; line-height: 1.5;
+  border: 1px solid var(--rc-border-2); border-radius: 6px; padding: 8px;
+  background: #0f172a; color: #e2e8f0;
+}
+.rc-biz-script:focus { outline: none; box-shadow: 0 0 0 1px var(--rc-orange); }
 
 /* ---------- request tabs ---------- */
 .rc-tabs {

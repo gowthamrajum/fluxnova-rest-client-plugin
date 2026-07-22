@@ -8,17 +8,19 @@ import { METHODS, BODY_METHODS } from './lib/constants';
 import { navigate } from './lib/paths';
 import { detectExpressions } from './lib/expressions';
 import { activeRows, buildRequest } from './lib/request';
-import { generateCode } from './lib/codegen';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
+import {
+  TECH_ACTIONS, BIZ_ACTIONS, BIZ_FORMATS,
+  defaultTechExceptions, techCustomRow, bizRow
+} from './lib/exceptions';
 
 const REQ_TABS = ['params', 'authorization', 'headers', 'body'];
+// Response-handling sub-tabs in the right sidebar (below the always-on Inputs section).
+const SIDE_TABS = [['outputs', 'Outputs'], ['technical', 'Technical Exceptions'], ['business', 'Business Exceptions']];
 
 const kvRow = () => ({ key: '', value: '', desc: '', enabled: true });
 const outRow = () => ({ name: '', path: '' });
-
-const GEN_LANGS = [['groovy', 'Groovy'], ['js', 'JavaScript']];
-const GEN_SCOPES = [['call', 'Full call'], ['parse', 'Parse only']];
 
 /**
  * Postman-style REST client popup with a right-hand Inputs/Outputs sidebar.
@@ -74,8 +76,13 @@ export default class RestClientPlugin extends React.PureComponent {
       inputs: {},            // token '${x}' -> test value
       outputs: [outRow()],   // { name, path }
 
-      // deterministic code generator (design-time, ships in-bundle)
-      gen: { lang: 'groovy', scope: 'call', copied: false },
+      // response-handling sidebar sub-tab
+      sideTab: 'outputs',
+
+      // exception handling (engine-agnostic design-time metadata; persisted in snapshot)
+      techExceptions: defaultTechExceptions(),   // { classes:[…], custom:[…] }
+      bizExceptions: [bizRow()],                 // [{ name, script, action, bpmnError }]
+      bizFormat: 'groovy',                       // language for the business-check scripts
 
       // response
       sending: false,
@@ -103,8 +110,8 @@ export default class RestClientPlugin extends React.PureComponent {
     if (window.__fluxnovaRestClient) delete window.__fluxnovaRestClient;
   }
 
-  // Ensure params/headers/form each end in a blank kvRow and outputs in a blank outRow,
-  // so the "type in the last row to add another" affordance works after a prefill.
+  // Ensure editable tables end in a blank row so the "type in the last row to add
+  // another" affordance works after a prefill.
   normalizeRows(state) {
     const pad = (rows, make) => {
       const arr = Array.isArray(rows) && rows.length ? rows.slice() : [make()];
@@ -114,12 +121,17 @@ export default class RestClientPlugin extends React.PureComponent {
       if (!isBlank) arr.push(empty);
       return arr;
     };
+    const tech = state.techExceptions && Array.isArray(state.techExceptions.classes)
+      ? state.techExceptions
+      : defaultTechExceptions();
     return {
       ...state,
       params: pad(state.params, kvRow),
       headers: pad(state.headers, kvRow),
       form: pad(state.form, kvRow),
-      outputs: pad(state.outputs, outRow)
+      outputs: pad(state.outputs, outRow),
+      techExceptions: { classes: tech.classes, custom: pad(tech.custom, techCustomRow) },
+      bizExceptions: pad(state.bizExceptions, bizRow)
     };
   }
 
@@ -324,7 +336,7 @@ export default class RestClientPlugin extends React.PureComponent {
             </div>
             <div className="rc-side">
               {this.renderInputsSection()}
-              {this.renderOutputsSection()}
+              {this.renderHandlingSection()}
             </div>
           </div>
         </Modal.Body>
@@ -393,74 +405,176 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  renderOutputsSection() {
-    const { outputs, response } = this.state;
-    const body = response && response.body;
+  // Response handling: sub-tabbed Outputs / Technical Exceptions / Business Exceptions.
+  renderHandlingSection() {
+    const { sideTab } = this.state;
     return (
-      <div className="rc-side-sec rc-side-outputs">
-        <div className="rc-side-title"><span>Outputs</span></div>
+      <div className="rc-side-sec rc-side-handling">
+        <div className="rc-side-subtabs">
+          {SIDE_TABS.map(([v, l]) => (
+            <button
+              key={v}
+              className={'rc-side-subtab' + (sideTab === v ? ' active' : '')}
+              onClick={() => this.setState({ sideTab: v })}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
         <div className="rc-side-scroll">
-          <table className="rc-io-table">
-            <thead>
-              <tr><th>Name</th><th>Value</th><th className="rc-io-xcol" /></tr>
-            </thead>
-            <tbody>
-              {outputs.map((o, i) => {
-                const val = (o.path && body !== undefined) ? navigate(body, o.path) : undefined;
-                const resolved = o.path ? (val !== undefined ? this.previewVal(val) : (response ? '—' : '')) : '';
-                return (
-                  <tr key={i}>
-                    <td className="rc-io-inputcell">
-                      <input className="rc-io-input" placeholder="variable" value={o.name} onChange={this.updateOut(i, 'name')} />
-                    </td>
-                    <td className="rc-io-inputcell">
-                      <input className="rc-io-input" placeholder="json path" value={o.path} onChange={this.updateOut(i, 'path')} />
-                      {resolved !== '' && <span className={'rc-io-resolved' + (val === undefined ? ' miss' : '')}>{resolved}</span>}
-                    </td>
-                    <td className="rc-io-xcol">
-                      <button className="rc-del" onClick={this.removeOut(i)} title="remove">×</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {this.renderCodeGen()}
+          {sideTab === 'outputs' && this.renderOutputs()}
+          {sideTab === 'technical' && this.renderTechExceptions()}
+          {sideTab === 'business' && this.renderBizExceptions()}
         </div>
       </div>
     );
   }
 
-  renderCodeGen() {
-    const { gen } = this.state;
-    const code = generateCode(this.state);
+  renderOutputs() {
+    const { outputs, response } = this.state;
+    const body = response && response.body;
     return (
-      <div className="rc-gen">
-        <div className="rc-gen-head">
-          <span className="rc-gen-title">Code Generator</span>
-          <div className="rc-seg">
-            {GEN_LANGS.map(([v, l]) => (
-              <button key={v} className={gen.lang === v ? 'on' : ''} onClick={() => this.setGen({ lang: v })}>{l}</button>
-            ))}
-          </div>
+      <table className="rc-io-table">
+        <thead>
+          <tr><th>Name</th><th>Value</th><th className="rc-io-xcol" /></tr>
+        </thead>
+        <tbody>
+          {outputs.map((o, i) => {
+            const val = (o.path && body !== undefined) ? navigate(body, o.path) : undefined;
+            const resolved = o.path ? (val !== undefined ? this.previewVal(val) : (response ? '—' : '')) : '';
+            return (
+              <tr key={i}>
+                <td className="rc-io-inputcell">
+                  <input className="rc-io-input" placeholder="variable" value={o.name} onChange={this.updateOut(i, 'name')} />
+                </td>
+                <td className="rc-io-inputcell">
+                  <input className="rc-io-input" placeholder="json path" value={o.path} onChange={this.updateOut(i, 'path')} />
+                  {resolved !== '' && <span className={'rc-io-resolved' + (val === undefined ? ' miss' : '')}>{resolved}</span>}
+                </td>
+                <td className="rc-io-xcol">
+                  <button className="rc-del" onClick={this.removeOut(i)} title="remove">×</button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  }
+
+  /* ---- Technical Exceptions: HTTP-failure class / custom code -> action ---- */
+
+  renderTechExceptions() {
+    const { techExceptions } = this.state;
+    return (
+      <div className="rc-exc">
+        <p className="rc-exc-hint">Map each HTTP failure to an action. <b>Throw BPMN error</b> raises a catchable error (attach an error boundary event with the matching code).</p>
+        <div className="rc-exc-list">
+          {techExceptions.classes.map((c, i) => (
+            <div className="rc-exc-row" key={c.key}>
+              <span className="rc-exc-class"><b>{c.label}</b><span className="rc-exc-match">{c.match}</span></span>
+              <select className="rc-select rc-exc-action" value={c.action} onChange={this.updateTechClass(i, 'action')}>
+                {TECH_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              {c.action === 'error' && (
+                <input className="rc-io-input rc-exc-err" placeholder="bpmn error code" value={c.bpmnError} onChange={this.updateTechClass(i, 'bpmnError')} />
+              )}
+            </div>
+          ))}
         </div>
-        <div className="rc-gen-scope">
-          <div className="rc-seg small">
-            {GEN_SCOPES.map(([v, l]) => (
-              <button key={v} className={gen.scope === v ? 'on' : ''} onClick={() => this.setGen({ scope: v })}>{l}</button>
-            ))}
-          </div>
-          <button className="rc-gen-copy" onClick={this.copyCode}>{gen.copied ? 'Copied ✓' : 'Copy'}</button>
+        <div className="rc-exc-subhead">Custom status codes</div>
+        <div className="rc-exc-list">
+          {techExceptions.custom.map((r, i) => (
+            <div className="rc-exc-row" key={i}>
+              <input className="rc-io-input rc-exc-codein" placeholder="404, 5xx…" value={r.code} onChange={this.updateTechCustom(i, 'code')} />
+              <select className="rc-select rc-exc-action" value={r.action} onChange={this.updateTechCustom(i, 'action')}>
+                {TECH_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              {r.action === 'error' && (
+                <input className="rc-io-input rc-exc-err" placeholder="bpmn error code" value={r.bpmnError} onChange={this.updateTechCustom(i, 'bpmnError')} />
+              )}
+              <button className="rc-del" onClick={this.removeTechCustom(i)} title="remove">×</button>
+            </div>
+          ))}
         </div>
-        <pre className="rc-gen-code">{code}</pre>
-        <p className="rc-gen-note">
-          {gen.lang === 'groovy'
-            ? (gen.scope === 'call' ? 'Groovy Script Task — performs the call and sets variables. ${vars} resolve from process variables.' : 'Groovy Script Task — parses the response string `response` and sets variables.')
-            : (gen.scope === 'call' ? 'JavaScript (Node 18+ / external worker) — async fetch returning the mapped outputs.' : 'GraalJS Script Task — parses the response string `response` and sets variables.')}
-        </p>
       </div>
     );
   }
+
+  updateTechClass = (i, prop) => (e) => {
+    const classes = this.state.techExceptions.classes.slice();
+    classes[i] = { ...classes[i], [prop]: e.target.value };
+    this.setState({ techExceptions: { ...this.state.techExceptions, classes } });
+  };
+
+  updateTechCustom = (i, prop) => (e) => {
+    const custom = this.state.techExceptions.custom.slice();
+    custom[i] = { ...custom[i], [prop]: e.target.value };
+    if (i === custom.length - 1 && (custom[i].code || custom[i].bpmnError)) custom.push(techCustomRow());
+    this.setState({ techExceptions: { ...this.state.techExceptions, custom } });
+  };
+
+  removeTechCustom = (i) => () => {
+    const custom = this.state.techExceptions.custom.slice();
+    custom.splice(i, 1);
+    if (!custom.length) custom.push(techCustomRow());
+    this.setState({ techExceptions: { ...this.state.techExceptions, custom } });
+  };
+
+  /* ---- Business Exceptions: custom script (throws = exception) -> action ---- */
+
+  renderBizExceptions() {
+    const { bizExceptions, bizFormat } = this.state;
+    return (
+      <div className="rc-exc rc-biz">
+        <div className="rc-biz-head">
+          <p className="rc-exc-hint">Each check is a script over the response. If it <b>throws</b>, that's a business exception — run its action. The parsed <code>response</code> (and <code>statusCode</code>, <code>headers</code>) are in scope.</p>
+          <div className="rc-seg small">
+            {BIZ_FORMATS.map(([v, l]) => (
+              <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className="rc-exc-list">
+          {bizExceptions.map((r, i) => (
+            <div className="rc-biz-row" key={i}>
+              <div className="rc-biz-row-head">
+                <input className="rc-io-input rc-biz-name" placeholder="check name" value={r.name} onChange={this.updateBiz(i, 'name')} />
+                <select className="rc-select rc-exc-action" value={r.action} onChange={this.updateBiz(i, 'action')}>
+                  {BIZ_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <button className="rc-del" onClick={this.removeBiz(i)} title="remove">×</button>
+              </div>
+              <textarea
+                className="rc-biz-script"
+                spellCheck={false}
+                placeholder={bizFormat === 'groovy' ? "if (response?.status != 'ok') throw new RuntimeException('bad status')" : "if (response?.status !== 'ok') throw new Error('bad status')"}
+                value={r.script}
+                onChange={this.updateBiz(i, 'script')}
+              />
+              {r.action === 'error' && (
+                <input className="rc-io-input rc-exc-err wide" placeholder="bpmn error code (for the boundary event)" value={r.bpmnError} onChange={this.updateBiz(i, 'bpmnError')} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  updateBiz = (i, prop) => (e) => {
+    const rows = this.state.bizExceptions.slice();
+    rows[i] = { ...rows[i], [prop]: e.target.value };
+    if (i === rows.length - 1 && (rows[i].name || rows[i].script)) rows.push(bizRow());
+    this.setState({ bizExceptions: rows });
+  };
+
+  removeBiz = (i) => () => {
+    const rows = this.state.bizExceptions.slice();
+    rows.splice(i, 1);
+    if (!rows.length) rows.push(bizRow());
+    this.setState({ bizExceptions: rows });
+  };
 
   previewVal(v) {
     if (v === null) return 'null';
@@ -469,18 +583,6 @@ export default class RestClientPlugin extends React.PureComponent {
     }
     return String(v);
   }
-
-  /* ---- deterministic code generator (Groovy / JS) lives in lib/codegen.js ---- */
-
-  setGen = (patch) => this.setState({ gen: { ...this.state.gen, ...patch, copied: false } });
-
-  copyCode = () => {
-    const code = generateCode(this.state);
-    if (code && navigator.clipboard) {
-      navigator.clipboard.writeText(code);
-      this.setState({ gen: { ...this.state.gen, copied: true } });
-    }
-  };
 
   /* ---- request editors ---- */
 

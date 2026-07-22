@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, it, expect } from 'vitest';
 import { parsePath, navigate } from '../client/lib/paths';
-import { navJs, navGroovy } from '../client/lib/codegen';
+import { navJs, navGroovy } from '../client/lib/navigation';
 
 // The path engine is the single source of truth for the live preview AND codegen.
 // These cases assert (a) tokenization, (b) live eval, and (c) that the generated JS

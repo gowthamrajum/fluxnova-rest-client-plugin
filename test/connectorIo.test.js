@@ -18,7 +18,12 @@ function fullState() {
     bodyType: 'raw', rawType: 'json', body: '{"note":"${msg}"}', form: [],
     inputs: { '${orderId}': '99', '${token}': 'secret', '${msg}': 'hi' },
     outputs: [{ name: 'status', path: 'status' }, { name: 'firstId', path: 'items[0].id' }],
-    gen: { lang: 'groovy', scope: 'call' }
+    techExceptions: {
+      classes: [{ key: 'client', label: 'Client error', match: '4xx', action: 'error', bpmnError: 'http-client-error' }],
+      custom: [{ code: '418', action: 'ignore', bpmnError: '' }]
+    },
+    bizExceptions: [{ name: 'reject flag', script: "if (response?.rejected) throw new Error('rejected')", action: 'error', bpmnError: 'order-rejected' }],
+    bizFormat: 'groovy'
   };
 }
 
@@ -64,7 +69,9 @@ describe('round-trip via the JSON snapshot', () => {
     expect(restored.bearerToken).toBe('${token}');
     expect(restored.inputs).toEqual(st.inputs);      // test data survives
     expect(restored.outputs).toEqual(st.outputs);    // output mappings survive
-    expect(restored.gen).toEqual(st.gen);
+    expect(restored.techExceptions).toEqual(st.techExceptions); // exception handling survives
+    expect(restored.bizExceptions).toEqual(st.bizExceptions);
+    expect(restored.bizFormat).toBe('groovy');
   });
 });
 

@@ -5,11 +5,11 @@ A **Postman-style REST client** built into the [FluxNova Modeler](https://github
 
 Design, run, and wire up HTTP calls for **Connector Service Tasks** without leaving the modeler:
 build a request visually, send it (cross-origin calls work — see the proxy below), map the
-response into process variables, generate ready-to-paste Groovy/JS, and **save it straight back
-into the task's connector config**.
+response into process variables, define **technical & business exception handling**, and **save it
+straight back into the task's connector config**.
 
-> Status: `v0.2.0` — request builder, inputs/outputs, CORS-free proxy, BPMN round-trip, and a
-> deterministic code generator. Apache-2.0.
+> Status: `v0.3.0` — request builder, inputs/outputs, CORS-free proxy, BPMN round-trip, and
+> technical + business exception handling. Apache-2.0.
 
 ---
 
@@ -25,11 +25,14 @@ into the task's connector config**.
   response panel shows which path was used (`via proxy` / `via direct`).
 - **Outputs mapping** — map response values to process variables with dot/bracket JSON paths
   (`data[0].id`, `items[*].name`, `meta['content-type']`), previewed live against the last response.
-- **Code generator** — deterministic Groovy / JavaScript for a full call or parse-only, driven by
-  the same path engine as the live preview (they can never disagree). No LLM, no downloads.
+- **Technical exceptions** — per HTTP failure class (4xx / 5xx / 401·403 / 429 / timeout) *and*
+  custom status codes, choose an action: **Throw BPMN error** (with a code an error boundary event
+  can catch), **Throw incident**, **Retry**, or **Log & ignore**.
+- **Business exceptions** — named checks, each a small **Groovy/JS script** over the response; if
+  the script **throws**, that's a business exception → **Log info / Log error / Throw BPMN error**.
 - **Save to Task** — writes the request into the Service Task's `http-connector` config
-  (`camunda:inputOutput`) plus a JSON snapshot, so reopening restores the builder exactly. One
-  undoable edit.
+  (`camunda:inputOutput`) plus a JSON snapshot (which also carries the exception handling), so
+  reopening restores the builder exactly. One undoable edit.
 
 ---
 
@@ -91,7 +94,7 @@ a direct fetch.
 
 ```bash
 npm run dev     # webpack watch build
-npm test        # vitest — path engine, request builder, codegen, connector round-trip
+npm test        # vitest — path engine, request builder, connector round-trip
 ```
 
 Architecture:
@@ -102,7 +105,8 @@ Architecture:
 - `client/propertiesProvider.js` — injects the **Build request…** button and hands the popup the
   bpmn-js model services for the round-trip.
 - `client/lib/` — framework-free, unit-tested logic: `paths` (JSON-path engine), `expressions`,
-  `request` (builder), `codegen`, `proxyClient`, `connectorIo` (BPMN read/write).
+  `request` (builder), `navigation` (path→Groovy/JS extraction), `exceptions` (handling model),
+  `proxyClient`, `connectorIo` (BPMN read/write).
 
 ---
 

@@ -18,7 +18,7 @@
  * moddle) so it is unit-testable without Electron. `writeConnector` is the thin
  * bpmn-js wrapper that applies the result through modeling (undoable, marks dirty).
  */
-import { navGroovy } from './codegen';
+import { navGroovy } from './navigation';
 
 export const CONNECTOR_ID = 'http-connector';
 export const CONFIG_PROP = 'fluxnova:restClientConfig';
@@ -28,7 +28,8 @@ const PERSIST_KEYS = [
   'method', 'url', 'params', 'headers',
   'authType', 'bearerToken', 'basicUser', 'basicPass', 'apiKeyName', 'apiKeyValue', 'apiKeyIn',
   'bodyType', 'rawType', 'body', 'form',
-  'inputs', 'outputs', 'gen'
+  'inputs', 'outputs',
+  'techExceptions', 'bizExceptions', 'bizFormat'
 ];
 
 function getBo(element) { return (element && (element.businessObject || element)) || null; }
