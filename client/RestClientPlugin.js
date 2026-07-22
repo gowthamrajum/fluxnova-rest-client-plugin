@@ -8,7 +8,7 @@ import { METHODS, BODY_METHODS } from './lib/constants';
 import { navigate } from './lib/paths';
 import { detectExpressions } from './lib/expressions';
 import { activeRows, buildRequest } from './lib/request';
-import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, formatJson, mapNodeAt } from './lib/payload';
+import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, formatJson, mapNodeAt, payloadCode } from './lib/payload';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
 import { compileHandler } from './lib/connectorCompile';
@@ -803,6 +803,28 @@ export default class RestClientPlugin extends React.PureComponent {
         {bodyType === 'json' && this.renderJsonBuilder()}
         {bodyType === 'raw' && this.renderRawBody()}
         {(bodyType === 'urlencoded' || bodyType === 'form') && this.renderKvTable('form', bodyType === 'form' ? 'Form Data' : 'URL-encoded Fields')}
+        {(bodyType === 'json' || bodyType === 'raw') && this.renderPayloadCode()}
+      </div>
+    );
+  }
+
+  // The payload as a build-and-serialize script (Groovy / JS), for a Script Task or a
+  // scripted connector input — ${var} becomes a process-variable reference.
+  renderPayloadCode() {
+    const { bizFormat } = this.state;
+    const code = payloadCode(this.state, bizFormat === 'js' ? 'js' : 'groovy');
+    return (
+      <div className="rc-code">
+        <div className="rc-code-head">
+          <span className="rc-code-title">Payload as {bizFormat === 'js' ? 'JavaScript' : 'Groovy'}</span>
+          <div className="rc-seg small">
+            {BIZ_FORMATS.map(([v, l]) => (
+              <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <pre className="rc-code-body">{code}</pre>
+        <p className="rc-code-note">Builds the body in a script — <code>{'${var}'}</code> reads from a process variable.</p>
       </div>
     );
   }

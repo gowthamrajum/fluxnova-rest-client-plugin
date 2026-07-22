@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, it, expect } from 'vitest';
-import { compileJson, jsonNode, jsonRoot, payloadString, jsonError, formatJson, contentTypeFor, collectJsonValues, mapNodeAt } from '../client/lib/payload';
+import { compileJson, jsonNode, jsonRoot, payloadString, jsonError, formatJson, contentTypeFor, collectJsonValues, mapNodeAt, payloadCode } from '../client/lib/payload';
 
 // Build a scalar/leaf node.
 const n = (key, value, type = 'string') => ({ ...jsonNode(type), key, value });
@@ -79,6 +79,35 @@ describe('jsonError + formatJson', () => {
     expect(out).toContain('"${orderId}"');
     expect(out).toContain('${count}');
     expect(out).toContain('\n');
+  });
+});
+
+describe('payloadCode — payload as a script', () => {
+  const st = {
+    bodyType: 'json',
+    jsonRoot: c('', 'object', [
+      n('orderId', 'orderId', 'expression'),
+      n('quantity', '3', 'number'),
+      c('sizes', 'array', [n('', 'S'), n('', 'M')])
+    ])
+  };
+  it('Groovy: JsonOutput.toJson over a map literal; expression -> variable ref', () => {
+    const g = payloadCode(st, 'groovy');
+    expect(g).toContain('import groovy.json.JsonOutput');
+    expect(g).toContain('def payload = JsonOutput.toJson(');
+    expect(g).toContain("'orderId': orderId");     // expression becomes a bare var
+    expect(g).toContain("'quantity': 3");
+    expect(g).toContain("'sizes': [");
+  });
+  it('JS: JSON.stringify over an object literal', () => {
+    const j = payloadCode(st, 'js');
+    expect(j).toContain('var payload = JSON.stringify(');
+    expect(j).toContain('"orderId": orderId');
+    expect(j).toContain('"quantity": 3');
+  });
+  it('raw mode wraps the body as an interpolating string', () => {
+    expect(payloadCode({ bodyType: 'raw', body: '{"id":"${x}"}' }, 'groovy')).toContain('def payload = """{"id":"${x}"}"""');
+    expect(payloadCode({ bodyType: 'raw', body: 'hi ${x}' }, 'js')).toContain('var payload = `hi ${x}`;');
   });
 });
 

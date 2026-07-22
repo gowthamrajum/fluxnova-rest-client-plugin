@@ -101,6 +101,62 @@ export function contentTypeFor(state) {
   return null;
 }
 
+/* ---- payload as a script (Groovy / JS) — build the object + serialize it ---- */
+
+function gStr(s) { return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, '\\n') + "'"; }
+
+// The scalar node as a language literal. `expression` becomes a bare variable reference
+// (the ${…} inner), so the generated script reads it from a process variable.
+function codeScalar(node, lang) {
+  const v = node.value != null ? String(node.value) : '';
+  switch (node.type) {
+    case 'number': return v.trim() === '' ? '0' : v.trim();
+    case 'boolean': return v.trim().toLowerCase() === 'true' ? 'true' : 'false';
+    case 'null': return 'null';
+    case 'raw': return v.trim() === '' ? 'null' : v;
+    case 'expression': { const m = /^\$\{([\s\S]*)\}$/.exec(v.trim()); return (m ? m[1] : v).trim() || 'null'; }
+    default: return lang === 'js' ? JSON.stringify(v) : gStr(v);
+  }
+}
+
+function codeNode(node, lang, indent) {
+  const pad = '  '.repeat(indent);
+  const inner = '  '.repeat(indent + 1);
+  if (node.type === 'object') {
+    const rows = (node.children || []).filter((c) => c.enabled && c.key);
+    if (!rows.length) return lang === 'js' ? '{}' : '[:]';   // Groovy empty map is [:]
+    const key = (k) => (lang === 'js' ? JSON.stringify(k) : gStr(k)) + ': ';
+    const items = rows.map((c) => inner + key(c.key) + codeNode(c, lang, indent + 1));
+    return (lang === 'js' ? '{' : '[') + '\n' + items.join(',\n') + '\n' + pad + (lang === 'js' ? '}' : ']');
+  }
+  if (node.type === 'array') {
+    const rows = (node.children || []).filter((c) => c.enabled);
+    if (!rows.length) return '[]';
+    const items = rows.map((c) => inner + codeNode(c, lang, indent + 1));
+    return '[\n' + items.join(',\n') + '\n' + pad + ']';
+  }
+  return codeScalar(node, lang);
+}
+
+// Generate a script (lang = 'groovy' | 'js') that builds the payload and serializes it
+// to a `payload` variable. Covers the JSON builder and the raw editor. null otherwise.
+export function payloadCode(state, lang) {
+  const js = lang === 'js';
+  if (state.bodyType === 'json') {
+    const lit = codeNode(state.jsonRoot || jsonRoot(), lang, 0);
+    return js
+      ? 'var payload = JSON.stringify(' + lit + ');'
+      : 'import groovy.json.JsonOutput\n\ndef payload = JsonOutput.toJson(' + lit + ')';
+  }
+  if (state.bodyType === 'raw') {
+    const b = state.body || '';
+    return js
+      ? 'var payload = `' + b.replace(/\\/g, '\\\\').replace(/`/g, '\\`') + '`;'
+      : 'def payload = """' + b.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '"""';
+  }
+  return null;
+}
+
 // null when the string parses as JSON (with ${…} treated as a placeholder), else the error message.
 export function jsonError(str) {
   if (!str || !str.trim()) return null;
