@@ -19,14 +19,10 @@ function fullState() {
     inputs: { '${orderId}': '99', '${token}': 'secret', '${msg}': 'hi' },
     outputs: [{ name: 'status', path: 'status' }, { name: 'firstId', path: 'items[0].id' }],
     techExceptions: {
-      classes: [{
-        key: 'client', label: 'Client error', match: '4xx',
-        actions: { log: { on: true, value: 'client failed' }, incident: { on: false, value: '' }, error: { on: true, value: 'http-client-error' }, retry: { on: false } }
-      }],
-      custom: [{
-        code: '418',
-        actions: { log: { on: true, value: 'teapot' }, incident: { on: false, value: '' }, error: { on: false, value: '' }, retry: { on: false } }
-      }]
+      rules: [
+        { status: 'client', code: '', actions: { log: { on: true, value: 'client failed' }, incident: { on: false, value: '' }, error: { on: true, value: 'http-client-error' }, retry: { on: false } } },
+        { status: 'custom', code: '409', actions: { log: { on: false, value: '' }, incident: { on: false, value: '' }, error: { on: true, value: 'order-conflict' }, retry: { on: false } } }
+      ]
     },
     bizExceptions: [{
       name: 'reject flag',

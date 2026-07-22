@@ -188,6 +188,24 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 /* outputs table gets a little breathing room in the wide tab body */
 .rc-io-card { max-width: 720px; }
 
+/* ---------- Inputs sidebar: stacked labeled fields ---------- */
+.rc-in-list { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.rc-in-field { display: flex; flex-direction: column; gap: 5px; }
+.rc-in-tok {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  font-family: var(--rc-mono); font-size: 11.5px; color: var(--rc-orange-d);
+  background: var(--rc-orange-soft); border: 1px solid #ffe2d4; border-radius: 999px;
+  padding: 2px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rc-in-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--rc-orange); flex: none; }
+.rc-in-input {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--rc-border-2); border-radius: var(--rc-r-md); background: #fff;
+  padding: 8px 11px; font-size: 12px; font-family: var(--rc-mono);
+}
+.rc-in-input:focus { outline: none; border-color: var(--rc-orange); box-shadow: 0 0 0 3px rgba(255,108,55,0.12); }
+.rc-in-empty { color: var(--rc-faint); font-size: 12px; line-height: 1.6; padding: 8px 4px; }
+
 /* segmented toggle (reused by the business-exception language switch) */
 .rc-seg { display: inline-flex; border: 1px solid var(--rc-border-2); border-radius: 6px; overflow: hidden; }
 .rc-seg button {
@@ -213,12 +231,29 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 }
 .rc-exc-card-head { display: flex; align-items: center; gap: 10px; }
 .rc-exc-card-head b { font-size: 13px; color: var(--rc-ink); }
+.rc-exc-when { font-size: 12px; font-weight: 600; color: var(--rc-muted); }
+.rc-exc-status { font-size: 12px; padding: 7px 10px; min-width: 210px; }
 .rc-exc-match {
   font-family: var(--rc-mono); font-size: 11px; color: var(--rc-muted);
   background: var(--rc-bg-soft); border: 1px solid var(--rc-border); border-radius: 999px; padding: 1px 8px;
 }
-.rc-exc-codein { flex: 1; border: 1px solid var(--rc-border-2); border-radius: var(--rc-r-sm); background: #fff; padding: 7px 10px; max-width: 220px; }
+.rc-exc-codein { flex: 1; border: 1px solid var(--rc-border-2); border-radius: var(--rc-r-sm); background: #fff; padding: 7px 10px; max-width: 220px; font-family: var(--rc-mono); font-size: 12px; }
 .rc-exc-card-head .rc-del { margin-left: auto; }
+
+/* empty state + add button (workflow-style) */
+.rc-exc-blank {
+  color: var(--rc-faint); font-size: 12.5px; text-align: center;
+  border: 1px dashed var(--rc-border-2); border-radius: var(--rc-r); padding: 22px 16px; margin-bottom: 12px;
+}
+.rc-add {
+  margin-top: 12px; align-self: flex-start;
+  border: 1px dashed var(--rc-border-2); background: #fff; color: var(--rc-orange-d);
+  border-radius: var(--rc-r-md); padding: 9px 16px; font-size: 12.5px; font-weight: 650; cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.rc-add:hover { background: var(--rc-orange-soft); border-color: var(--rc-orange); }
+.rc-exc { display: flex; flex-direction: column; align-items: stretch; }
+.rc-exc > .rc-add { align-self: flex-start; }
 
 /* action toggle chips (multiple can be on) */
 .rc-acts { display: flex; flex-direction: column; gap: 10px; }
