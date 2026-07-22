@@ -53,6 +53,7 @@ export default class RestClientPlugin extends React.PureComponent {
       services: null,       // { modeling, bpmnFactory, commandStack } for BPMN round-trip
       saved: false,         // "Saved ✓" flash on the Save to Task button
       inputsOpen: false,    // Inputs sidebar drawer — starts collapsed
+      respOpen: false,      // Response panel — collapsed until a Send expands it
 
       // request
       tab: 'params',
@@ -158,7 +159,7 @@ export default class RestClientPlugin extends React.PureComponent {
   };
 
   close = () => this.setState({ open: false });
-  clearResponse = () => this.setState({ response: null, error: null });
+  clearResponse = () => this.setState({ response: null, error: null, respOpen: false });
   setField = (field) => (e) => this.setState({ [field]: e.target.value });
 
   /* ---- workspace: resizable modal that remembers its size ---- */
@@ -277,7 +278,8 @@ export default class RestClientPlugin extends React.PureComponent {
 
   send = async () => {
     if (!this.state.url.trim()) return;
-    this.setState({ sending: true, response: null, error: null, respTab: 'body' });
+    // Clicking Send expands the response panel.
+    this.setState({ sending: true, response: null, error: null, respTab: 'body', respOpen: true });
     const started = Date.now();
     try {
       const { url, opts } = buildRequest(this.state);
@@ -355,12 +357,12 @@ export default class RestClientPlugin extends React.PureComponent {
 
   render() {
     if (!this.state.open) return null;
-    const { method, url, tab, sending, response, error } = this.state;
+    const { method, url, tab, sending, respOpen } = this.state;
     const label = this.taskLabel();
-    // The response panel only appears once a request has actually run (or errored).
-    const showResponse = tab !== 'technical' && tab !== 'business' && !!(response || error);
-    // With no response reserved, the request editor fills the freed height.
-    const tallBody = tab === 'technical' || tab === 'business' || !showResponse;
+    // A collapsible Response panel lives under the request tabs (not the config tabs).
+    const showResponse = tab !== 'technical' && tab !== 'business';
+    // When the response is collapsed (or absent), the request editor fills the height.
+    const tallBody = tab === 'technical' || tab === 'business' || !respOpen;
 
     return (
       <Modal onClose={this.close} className="rc-modal">
@@ -965,21 +967,28 @@ export default class RestClientPlugin extends React.PureComponent {
   /* ---- response ---- */
 
   renderResponse() {
-    const { response, error, respTab, respView } = this.state;
-    // Only rendered after a Send (guarded by the caller); nothing to show otherwise.
-    if (!response && !error) return null;
+    const { response, error, respTab, respView, respOpen, sending } = this.state;
     const ok = response && response.status >= 200 && response.status < 300;
     const hdrCount = response && response.headers ? Object.keys(response.headers).length : 0;
+    const hasResult = !!(response || error);
 
     return (
-      <div className="rc-response">
+      <div className={'rc-response' + (respOpen ? ' open' : '')}>
         <div className="rc-resp-bar">
-          <div className="rc-resp-tabs">
-            <button className={'rc-rtab' + (respTab === 'body' ? ' active' : '')} onClick={() => this.setState({ respTab: 'body' })}>Body</button>
-            <button className={'rc-rtab' + (respTab === 'headers' ? ' active' : '')} onClick={() => this.setState({ respTab: 'headers' })}>
-              Headers{hdrCount ? <span className="rc-badge">{hdrCount}</span> : null}
-            </button>
-          </div>
+          <button className="rc-resp-toggle" onClick={() => this.setState({ respOpen: !respOpen })} title={respOpen ? 'Collapse' : 'Expand'}>
+            <IconChevronRight />
+            <span>Response</span>
+            {sending && <span className="rc-resp-hint">sending…</span>}
+            {!sending && !hasResult && <span className="rc-resp-hint">hit Send</span>}
+          </button>
+          {respOpen && hasResult && !error && (
+            <div className="rc-resp-tabs">
+              <button className={'rc-rtab' + (respTab === 'body' ? ' active' : '')} onClick={() => this.setState({ respTab: 'body' })}>Body</button>
+              <button className={'rc-rtab' + (respTab === 'headers' ? ' active' : '')} onClick={() => this.setState({ respTab: 'headers' })}>
+                Headers{hdrCount ? <span className="rc-badge">{hdrCount}</span> : null}
+              </button>
+            </div>
+          )}
           <div className="rc-resp-meta">
             {response && response.status != null && (
               <span className={'rc-status ' + (ok ? 'ok' : 'bad')}>{response.status} {response.statusText}</span>
@@ -988,15 +997,19 @@ export default class RestClientPlugin extends React.PureComponent {
             {response && response.bytes != null && <span className="rc-time">{this.humanSize(response.bytes)}</span>}
             {response && response.shape && <span className={'rc-shape s-' + response.shape}>{response.shape}</span>}
             {response && response.via && <span className={'rc-via v-' + response.via} title={response.via === 'proxy' ? 'Sent through the main-process proxy (no CORS)' : 'Sent directly from the renderer (subject to CORS)'}>via {response.via}</span>}
-            <button className="rc-resp-close" onClick={this.clearResponse} title="Close response"><IconClose /></button>
+            {hasResult && <button className="rc-resp-close" onClick={this.clearResponse} title="Close response"><IconClose /></button>}
           </div>
         </div>
 
-        {error && (
+        {respOpen && !hasResult && (
+          <div className="rc-resp-empty"><p>Enter a URL and hit <b>Send</b> to see the response here.</p></div>
+        )}
+
+        {respOpen && error && (
           <pre className="rc-body rc-err">Error: {error}{'\n\n'}This request went directly from the renderer, so a cross-origin call may have been blocked by CORS. The main-process proxy (menu.js) handles cross-origin calls — make sure the plugin is installed with its menu half and restart the modeler.</pre>
         )}
 
-        {!error && respTab === 'body' && response && response.body !== undefined && (
+        {respOpen && !error && respTab === 'body' && response && response.body !== undefined && (
           <>
             <div className="rc-view-toggle">
               <button className={respView === 'pretty' ? 'on' : ''} onClick={() => this.setState({ respView: 'pretty' })}>Pretty</button>
@@ -1006,7 +1019,7 @@ export default class RestClientPlugin extends React.PureComponent {
           </>
         )}
 
-        {!error && respTab === 'headers' && (
+        {respOpen && !error && respTab === 'headers' && response && (
           <div className="rc-resp-headers">
             {response && response.headers && Object.keys(response.headers).length
               ? Object.keys(response.headers).map((k) => (
