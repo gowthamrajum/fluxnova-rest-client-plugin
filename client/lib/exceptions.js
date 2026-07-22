@@ -4,44 +4,75 @@
  * (persisted in the connector's JSON snapshot, not tied to any one FluxNova/Camunda
  * delegate).
  *
- *  - Technical exceptions: how each HTTP failure CLASS (and any custom status code)
- *    is handled — log & ignore, retry, raise an incident, or throw a BPMN error that
- *    an error boundary event can catch.
+ *  - Technical exceptions: each HTTP failure CLASS (and any custom status code) can
+ *    have MULTIPLE actions toggled on at once — Log (with a message), Throw Incident
+ *    (with a message), Throw BPMN Error (with a code an error boundary event catches),
+ *    and Retry.
  *  - Business exceptions: named checks. Each is a small script (Groovy/JS) over the
- *    response; if the script THROWS, that's a business exception → run the action.
+ *    response; if the script THROWS, that's a business exception → run whichever
+ *    actions are toggled on (Log / Incident / BPMN Error).
  */
 
-// Actions shared by technical rows. `error` surfaces `bpmnError` for a boundary event.
-export const TECH_ACTIONS = [
-  ['ignore', 'Log & ignore'],
-  ['retry', 'Retry'],
-  ['incident', 'Throw incident'],
-  ['error', 'Throw BPMN error']
+// An action definition: which toggle to show, and whether it carries a free-text field.
+// `field` is the label for the text input; null = a bare on/off toggle (e.g. Retry).
+export const TECH_ACTION_DEFS = [
+  { key: 'log', label: 'Log', field: 'Log message', placeholder: 'message name' },
+  { key: 'incident', label: 'Throw incident', field: 'Incident message', placeholder: 'message name' },
+  { key: 'error', label: 'Throw BPMN error', field: 'BPMN error code', placeholder: 'error code' },
+  { key: 'retry', label: 'Retry', field: null }
 ];
 
-// Actions for business checks.
-export const BIZ_ACTIONS = [
-  ['logInfo', 'Log info'],
-  ['logError', 'Log error'],
-  ['error', 'Throw BPMN error']
+// Business checks fire after a successful response, so Retry doesn't apply.
+export const BIZ_ACTION_DEFS = [
+  { key: 'log', label: 'Log', field: 'Log message', placeholder: 'message name' },
+  { key: 'incident', label: 'Throw incident', field: 'Incident message', placeholder: 'message name' },
+  { key: 'error', label: 'Throw BPMN error', field: 'BPMN error code', placeholder: 'error code' }
 ];
 
 export const BIZ_FORMATS = [['groovy', 'Groovy'], ['js', 'JavaScript']];
 
-// The fixed HTTP failure classes, with sensible default handling + a BPMN error code
-// an error boundary can listen for. Mirrors common HTTP-connector failure semantics.
-export const TECH_CLASSES = [
-  { key: 'client', label: 'Client error', match: '4xx', action: 'error', bpmnError: 'http-client-error' },
-  { key: 'server', label: 'Server error', match: '5xx', action: 'retry', bpmnError: 'http-server-error' },
-  { key: 'auth', label: 'Auth error', match: '401, 403', action: 'error', bpmnError: 'http-auth-error' },
-  { key: 'rateLimit', label: 'Rate limited', match: '429', action: 'retry', bpmnError: 'http-rate-limit' },
-  { key: 'timeout', label: 'Timeout / network', match: 'timeout', action: 'retry', bpmnError: 'http-timeout' }
+// Fresh action state for a def set: every action off, each with an empty value.
+export function emptyActions(defs) {
+  const a = {};
+  defs.forEach((d) => { a[d.key] = { on: false, value: '' }; });
+  return a;
+}
+
+// Convenience: build action state with some actions pre-enabled (and optional values).
+// `preset` = { error: 'http-client-error', retry: true }.
+function withActions(defs, preset) {
+  const a = emptyActions(defs);
+  Object.keys(preset || {}).forEach((k) => {
+    if (!a[k]) return;
+    const v = preset[k];
+    a[k] = { on: true, value: typeof v === 'string' ? v : '' };
+  });
+  return a;
+}
+
+// The fixed HTTP failure classes, with sensible default handling.
+export const TECH_CLASS_DEFS = [
+  { key: 'client', label: 'Client error', match: '4xx', preset: { error: 'http-client-error' } },
+  { key: 'server', label: 'Server error', match: '5xx', preset: { retry: true } },
+  { key: 'auth', label: 'Auth error', match: '401, 403', preset: { error: 'http-auth-error' } },
+  { key: 'rateLimit', label: 'Rate limited', match: '429', preset: { retry: true } },
+  { key: 'timeout', label: 'Timeout / network', match: 'timeout', preset: { retry: true } }
 ];
 
-export const techCustomRow = () => ({ code: '', action: 'error', bpmnError: '' });
-export const bizRow = () => ({ name: '', script: '', action: 'error', bpmnError: '' });
+export const techCustomRow = () => ({ code: '', actions: emptyActions(TECH_ACTION_DEFS) });
+export const bizRow = () => ({ name: '', script: '', actions: emptyActions(BIZ_ACTION_DEFS) });
 
-// Fresh defaults for a new request: the fixed classes (cloned) + one blank custom row.
+// Fresh defaults for a new request: the fixed classes (with defaults) + one blank custom row.
 export function defaultTechExceptions() {
-  return { classes: TECH_CLASSES.map((c) => ({ ...c })), custom: [techCustomRow()] };
+  return {
+    classes: TECH_CLASS_DEFS.map((c) => ({
+      key: c.key, label: c.label, match: c.match, actions: withActions(TECH_ACTION_DEFS, c.preset)
+    })),
+    custom: [techCustomRow()]
+  };
+}
+
+// True when at least one action is toggled on (used for badge counts / "configured").
+export function anyActionOn(actions) {
+  return !!actions && Object.keys(actions).some((k) => actions[k] && actions[k].on);
 }

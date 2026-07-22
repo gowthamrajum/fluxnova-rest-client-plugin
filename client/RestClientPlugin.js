@@ -11,8 +11,8 @@ import { activeRows, buildRequest } from './lib/request';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
 import {
-  TECH_ACTIONS, BIZ_ACTIONS, BIZ_FORMATS,
-  defaultTechExceptions, techCustomRow, bizRow
+  TECH_ACTION_DEFS, BIZ_ACTION_DEFS, BIZ_FORMATS,
+  defaultTechExceptions, techCustomRow, bizRow, anyActionOn
 } from './lib/exceptions';
 
 // Left-column tabs, grouped: request definition | response handling. All share `state.tab`.
@@ -110,25 +110,30 @@ export default class RestClientPlugin extends React.PureComponent {
   // Ensure editable tables end in a blank row so the "type in the last row to add
   // another" affordance works after a prefill.
   normalizeRows(state) {
-    const pad = (rows, make) => {
+    // Append a trailing blank row so the "type in the last row to add another" affordance
+    // keeps working after a prefill. `blank` decides when the last row still counts as empty.
+    const pad = (rows, make, blank) => {
       const arr = Array.isArray(rows) && rows.length ? rows.slice() : [make()];
       const last = arr[arr.length - 1];
-      const empty = make();
-      const isBlank = Object.keys(empty).every((k) => k === 'enabled' || !last[k]);
-      if (!isBlank) arr.push(empty);
+      const isBlank = blank
+        ? blank(last)
+        : Object.keys(make()).every((k) => k === 'enabled' || !last[k]);
+      if (!isBlank) arr.push(make());
       return arr;
     };
     const tech = state.techExceptions && Array.isArray(state.techExceptions.classes)
       ? state.techExceptions
       : defaultTechExceptions();
+    const customBlank = (r) => !r.code && !anyActionOn(r.actions);
+    const bizBlank = (r) => !r.name && !r.script && !anyActionOn(r.actions);
     return {
       ...state,
       params: pad(state.params, kvRow),
       headers: pad(state.headers, kvRow),
       form: pad(state.form, kvRow),
       outputs: pad(state.outputs, outRow),
-      techExceptions: { classes: tech.classes, custom: pad(tech.custom, techCustomRow) },
-      bizExceptions: pad(state.bizExceptions, bizRow)
+      techExceptions: { classes: tech.classes, custom: pad(tech.custom, techCustomRow, customBlank) },
+      bizExceptions: pad(state.bizExceptions, bizRow, bizBlank)
     };
   }
 
@@ -181,7 +186,7 @@ export default class RestClientPlugin extends React.PureComponent {
     if (tab === 'outputs') return s.outputs.filter((o) => o.name && o.path).length;
     if (tab === 'technical') {
       const t = s.techExceptions;
-      return t.classes.filter((c) => c.action !== 'ignore').length + t.custom.filter((r) => r.code).length;
+      return t.classes.filter((c) => anyActionOn(c.actions)).length + t.custom.filter((r) => r.code && anyActionOn(r.actions)).length;
     }
     if (tab === 'business') return s.bizExceptions.filter((r) => r.name || r.script).length;
     return 0;
@@ -458,38 +463,67 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  /* ---- Technical Exceptions: HTTP-failure class / custom code -> action ---- */
+  /* ---- Technical Exceptions: HTTP class / custom code -> multiple toggleable actions ---- */
+
+  // Shared renderer for a set of toggleable actions on one exception (class/custom/business).
+  renderActions(defs, actions, onToggle, onValue) {
+    return (
+      <div className="rc-acts">
+        <div className="rc-act-toggles">
+          {defs.map((d) => (
+            <button
+              key={d.key}
+              type="button"
+              className={'rc-tgl' + (actions[d.key] && actions[d.key].on ? ' on' : '')}
+              onClick={() => onToggle(d.key)}
+            >
+              {actions[d.key] && actions[d.key].on ? '✓ ' : ''}{d.label}
+            </button>
+          ))}
+        </div>
+        {defs.some((d) => d.field && actions[d.key] && actions[d.key].on) && (
+          <div className="rc-act-fields">
+            {defs.filter((d) => d.field && actions[d.key] && actions[d.key].on).map((d) => (
+              <label className="rc-act-field" key={d.key}>
+                <span>{d.field}</span>
+                <input
+                  className="rc-io-input"
+                  placeholder={d.placeholder}
+                  value={actions[d.key].value}
+                  onChange={(e) => onValue(d.key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   renderTechExceptions() {
     const { techExceptions } = this.state;
     return (
       <div className="rc-exc">
-        <p className="rc-exc-hint">Map each HTTP failure to an action. <b>Throw BPMN error</b> raises a catchable error (attach an error boundary event with the matching code).</p>
+        <p className="rc-exc-hint">Toggle any combination of actions per failure. <b>Log</b> and <b>Throw incident</b> take a message; <b>Throw BPMN error</b> takes a code an error boundary event can catch.</p>
         <div className="rc-exc-list">
           {techExceptions.classes.map((c, i) => (
-            <div className="rc-exc-row" key={c.key}>
-              <span className="rc-exc-class"><b>{c.label}</b><span className="rc-exc-match">{c.match}</span></span>
-              <select className="rc-select rc-exc-action" value={c.action} onChange={this.updateTechClass(i, 'action')}>
-                {TECH_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-              {c.action === 'error' && (
-                <input className="rc-io-input rc-exc-err" placeholder="bpmn error code" value={c.bpmnError} onChange={this.updateTechClass(i, 'bpmnError')} />
-              )}
+            <div className="rc-exc-card" key={c.key}>
+              <div className="rc-exc-card-head">
+                <b>{c.label}</b><span className="rc-exc-match">{c.match}</span>
+              </div>
+              {this.renderActions(TECH_ACTION_DEFS, c.actions, this.toggleTech('classes', i), this.valueTech('classes', i))}
             </div>
           ))}
         </div>
         <div className="rc-exc-subhead">Custom status codes</div>
         <div className="rc-exc-list">
           {techExceptions.custom.map((r, i) => (
-            <div className="rc-exc-row" key={i}>
-              <input className="rc-io-input rc-exc-codein" placeholder="404, 5xx…" value={r.code} onChange={this.updateTechCustom(i, 'code')} />
-              <select className="rc-select rc-exc-action" value={r.action} onChange={this.updateTechCustom(i, 'action')}>
-                {TECH_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-              {r.action === 'error' && (
-                <input className="rc-io-input rc-exc-err" placeholder="bpmn error code" value={r.bpmnError} onChange={this.updateTechCustom(i, 'bpmnError')} />
-              )}
-              <button className="rc-del" onClick={this.removeTechCustom(i)} title="remove">×</button>
+            <div className="rc-exc-card" key={i}>
+              <div className="rc-exc-card-head">
+                <input className="rc-io-input rc-exc-codein" placeholder="404, 5xx…" value={r.code} onChange={this.setTechCode(i)} />
+                <button className="rc-del" onClick={this.removeTechCustom(i)} title="remove">×</button>
+              </div>
+              {this.renderActions(TECH_ACTION_DEFS, r.actions, this.toggleTech('custom', i), this.valueTech('custom', i))}
             </div>
           ))}
         </div>
@@ -497,16 +531,22 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  updateTechClass = (i, prop) => (e) => {
-    const classes = this.state.techExceptions.classes.slice();
-    classes[i] = { ...classes[i], [prop]: e.target.value };
-    this.setState({ techExceptions: { ...this.state.techExceptions, classes } });
-  };
+  // Mutate an action's `on` / `value` within techExceptions[scope][i].
+  patchTechAction(scope, i, key, patch, growCustom) {
+    const list = this.state.techExceptions[scope].slice();
+    const actions = { ...list[i].actions, [key]: { ...list[i].actions[key], ...patch } };
+    list[i] = { ...list[i], actions };
+    if (growCustom && scope === 'custom' && i === list.length - 1) list.push(techCustomRow());
+    this.setState({ techExceptions: { ...this.state.techExceptions, [scope]: list } });
+  }
 
-  updateTechCustom = (i, prop) => (e) => {
+  toggleTech = (scope, i) => (key) => this.patchTechAction(scope, i, key, { on: !this.state.techExceptions[scope][i].actions[key].on }, true);
+  valueTech = (scope, i) => (key, value) => this.patchTechAction(scope, i, key, { value });
+
+  setTechCode = (i) => (e) => {
     const custom = this.state.techExceptions.custom.slice();
-    custom[i] = { ...custom[i], [prop]: e.target.value };
-    if (i === custom.length - 1 && (custom[i].code || custom[i].bpmnError)) custom.push(techCustomRow());
+    custom[i] = { ...custom[i], code: e.target.value };
+    if (i === custom.length - 1 && custom[i].code) custom.push(techCustomRow());
     this.setState({ techExceptions: { ...this.state.techExceptions, custom } });
   };
 
@@ -517,14 +557,14 @@ export default class RestClientPlugin extends React.PureComponent {
     this.setState({ techExceptions: { ...this.state.techExceptions, custom } });
   };
 
-  /* ---- Business Exceptions: custom script (throws = exception) -> action ---- */
+  /* ---- Business Exceptions: custom script (throws = exception) -> toggleable actions ---- */
 
   renderBizExceptions() {
     const { bizExceptions, bizFormat } = this.state;
     return (
       <div className="rc-exc rc-biz">
         <div className="rc-biz-head">
-          <p className="rc-exc-hint">Each check is a script over the response. If it <b>throws</b>, that's a business exception — run its action. The parsed <code>response</code> (and <code>statusCode</code>, <code>headers</code>) are in scope.</p>
+          <p className="rc-exc-hint">Each check is a script over the response. If it <b>throws</b>, that's a business exception — run whichever actions are toggled on. The parsed <code>response</code> (and <code>statusCode</code>, <code>headers</code>) are in scope.</p>
           <div className="rc-seg small">
             {BIZ_FORMATS.map(([v, l]) => (
               <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
@@ -535,10 +575,7 @@ export default class RestClientPlugin extends React.PureComponent {
           {bizExceptions.map((r, i) => (
             <div className="rc-biz-row" key={i}>
               <div className="rc-biz-row-head">
-                <input className="rc-io-input rc-biz-name" placeholder="check name" value={r.name} onChange={this.updateBiz(i, 'name')} />
-                <select className="rc-select rc-exc-action" value={r.action} onChange={this.updateBiz(i, 'action')}>
-                  {BIZ_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                <input className="rc-io-input rc-biz-name" placeholder="check name" value={r.name} onChange={this.setBizField(i, 'name')} />
                 <button className="rc-del" onClick={this.removeBiz(i)} title="remove">×</button>
               </div>
               <textarea
@@ -546,11 +583,9 @@ export default class RestClientPlugin extends React.PureComponent {
                 spellCheck={false}
                 placeholder={bizFormat === 'groovy' ? "if (response?.status != 'ok') throw new RuntimeException('bad status')" : "if (response?.status !== 'ok') throw new Error('bad status')"}
                 value={r.script}
-                onChange={this.updateBiz(i, 'script')}
+                onChange={this.setBizField(i, 'script')}
               />
-              {r.action === 'error' && (
-                <input className="rc-io-input rc-exc-err wide" placeholder="bpmn error code (for the boundary event)" value={r.bpmnError} onChange={this.updateBiz(i, 'bpmnError')} />
-              )}
+              {this.renderActions(BIZ_ACTION_DEFS, r.actions, this.toggleBiz(i), this.valueBiz(i))}
             </div>
           ))}
         </div>
@@ -558,12 +593,23 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  updateBiz = (i, prop) => (e) => {
+  setBizField = (i, prop) => (e) => {
     const rows = this.state.bizExceptions.slice();
     rows[i] = { ...rows[i], [prop]: e.target.value };
     if (i === rows.length - 1 && (rows[i].name || rows[i].script)) rows.push(bizRow());
     this.setState({ bizExceptions: rows });
   };
+
+  patchBizAction(i, key, patch) {
+    const rows = this.state.bizExceptions.slice();
+    const actions = { ...rows[i].actions, [key]: { ...rows[i].actions[key], ...patch } };
+    rows[i] = { ...rows[i], actions };
+    if (i === rows.length - 1 && anyActionOn(actions)) rows.push(bizRow());
+    this.setState({ bizExceptions: rows });
+  }
+
+  toggleBiz = (i) => (key) => this.patchBizAction(i, key, { on: !this.state.bizExceptions[i].actions[key].on });
+  valueBiz = (i) => (key, value) => this.patchBizAction(i, key, { value });
 
   removeBiz = (i) => () => {
     const rows = this.state.bizExceptions.slice();

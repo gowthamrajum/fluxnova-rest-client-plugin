@@ -19,10 +19,20 @@ function fullState() {
     inputs: { '${orderId}': '99', '${token}': 'secret', '${msg}': 'hi' },
     outputs: [{ name: 'status', path: 'status' }, { name: 'firstId', path: 'items[0].id' }],
     techExceptions: {
-      classes: [{ key: 'client', label: 'Client error', match: '4xx', action: 'error', bpmnError: 'http-client-error' }],
-      custom: [{ code: '418', action: 'ignore', bpmnError: '' }]
+      classes: [{
+        key: 'client', label: 'Client error', match: '4xx',
+        actions: { log: { on: true, value: 'client failed' }, incident: { on: false, value: '' }, error: { on: true, value: 'http-client-error' }, retry: { on: false } }
+      }],
+      custom: [{
+        code: '418',
+        actions: { log: { on: true, value: 'teapot' }, incident: { on: false, value: '' }, error: { on: false, value: '' }, retry: { on: false } }
+      }]
     },
-    bizExceptions: [{ name: 'reject flag', script: "if (response?.rejected) throw new Error('rejected')", action: 'error', bpmnError: 'order-rejected' }],
+    bizExceptions: [{
+      name: 'reject flag',
+      script: "if (response?.rejected) throw new Error('rejected')",
+      actions: { log: { on: false, value: '' }, incident: { on: true, value: 'order rejected' }, error: { on: true, value: 'order-rejected' } }
+    }],
     bizFormat: 'groovy'
   };
 }
