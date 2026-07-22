@@ -1,40 +1,71 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { describe, it, expect } from 'vitest';
-import { compileJsonFields, payloadString, jsonError, formatJson, contentTypeFor } from '../client/lib/payload';
+import { compileJson, jsonNode, jsonRoot, payloadString, jsonError, formatJson, contentTypeFor, collectJsonValues, mapNodeAt } from '../client/lib/payload';
 
-const f = (key, value, type = 'string') => ({ key, value, type, enabled: true });
+// Build a scalar/leaf node.
+const n = (key, value, type = 'string') => ({ ...jsonNode(type), key, value });
+// Build a container node with children.
+const c = (key, type, children) => ({ ...jsonNode(type), key, children });
 
-describe('compileJsonFields', () => {
+describe('compileJson — scalars', () => {
   it('quotes strings, keeps numbers/booleans/null bare', () => {
-    const out = compileJsonFields([f('name', 'Ada'), f('age', '42', 'number'), f('ok', 'true', 'boolean'), f('x', '', 'null')]);
-    expect(JSON.parse(out)).toEqual({ name: 'Ada', age: 42, ok: true, x: null });
+    const root = c('', 'object', [n('name', 'Ada'), n('age', '42', 'number'), n('ok', 'true', 'boolean'), n('x', '', 'null')]);
+    expect(JSON.parse(compileJson(root))).toEqual({ name: 'Ada', age: 42, ok: true, x: null });
   });
-  it('wraps expression values as "${…}" (kept literal)', () => {
-    expect(compileJsonFields([f('id', 'orderId', 'expression')])).toContain('"id": "${orderId}"');
-    expect(compileJsonFields([f('id', '${orderId}', 'expression')])).toContain('"${orderId}"');
+  it('expression values become "${…}"; raw is verbatim', () => {
+    expect(compileJson(c('', 'object', [n('id', 'orderId', 'expression')]))).toContain('"id": "${orderId}"');
+    expect(compileJson(c('', 'object', [n('n', '${count}', 'raw')]))).toContain('"n": ${count}');
   });
-  it('emits raw values verbatim (unquoted expression / nested json)', () => {
-    expect(compileJsonFields([f('n', '${count}', 'raw')])).toContain('"n": ${count}');
-    expect(compileJsonFields([f('o', '{"a":1}', 'raw')])).toContain('"o": {"a":1}');
+});
+
+describe('compileJson — nested shapes', () => {
+  it('object with an array value', () => {
+    const root = c('', 'object', [c('tags', 'array', [n('', 'a'), n('', 'b')])]);
+    expect(JSON.parse(compileJson(root))).toEqual({ tags: ['a', 'b'] });
   });
-  it('skips disabled and keyless rows; empty -> {}', () => {
-    expect(compileJsonFields([{ key: 'a', value: '1', type: 'string', enabled: false }, f('', 'x')])).toBe('{}');
+  it('array of objects', () => {
+    const root = c('', 'array', [
+      c('', 'object', [n('id', '1', 'number')]),
+      c('', 'object', [n('id', '2', 'number')])
+    ]);
+    expect(JSON.parse(compileJson(root))).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+  it('deeply nested: object -> array -> object -> array', () => {
+    const root = c('', 'object', [
+      c('items', 'array', [
+        c('', 'object', [n('sku', 'A'), c('sizes', 'array', [n('', 'S'), n('', 'M')])])
+      ])
+    ]);
+    expect(JSON.parse(compileJson(root))).toEqual({ items: [{ sku: 'A', sizes: ['S', 'M'] }] });
+  });
+  it('empty containers compile to {} / []', () => {
+    expect(compileJson(c('', 'object', []))).toBe('{}');
+    expect(compileJson(c('', 'object', [c('a', 'array', [])]))).toContain('"a": []');
   });
 });
 
 describe('payloadString / contentType', () => {
-  it('json mode compiles the builder', () => {
-    const st = { bodyType: 'json', jsonFields: [f('a', '1', 'number')] };
+  it('json mode compiles the tree', () => {
+    const st = { bodyType: 'json', jsonRoot: c('', 'object', [n('a', '1', 'number')]) };
     expect(JSON.parse(payloadString(st))).toEqual({ a: 1 });
     expect(contentTypeFor(st)).toBe('application/json');
   });
-  it('raw mode returns the body; urlencoded joins form rows', () => {
-    expect(payloadString({ bodyType: 'raw', body: 'hi' })).toBe('hi');
-    expect(payloadString({ bodyType: 'urlencoded', form: [f('a', '1'), f('b', '2')] })).toBe('a=1&b=2');
-  });
   it('none / form-data have no textual payload', () => {
     expect(payloadString({ bodyType: 'none' })).toBeNull();
-    expect(payloadString({ bodyType: 'form', form: [f('a', '1')] })).toBeNull();
+    expect(payloadString({ bodyType: 'form', form: [n('a', '1')] })).toBeNull();
+  });
+});
+
+describe('collectJsonValues + mapNodeAt', () => {
+  it('gathers every leaf value (for ${…} detection)', () => {
+    const root = c('', 'object', [n('a', '${x}'), c('b', 'array', [n('', '${y}')])]);
+    expect(collectJsonValues(root)).toEqual(['${x}', '${y}']);
+  });
+  it('mapNodeAt updates a node by path immutably', () => {
+    const root = c('', 'object', [c('b', 'array', [n('', 'old')])]);
+    const next = mapNodeAt(root, [0, 0], (nd) => ({ ...nd, value: 'new' }));
+    expect(next.children[0].children[0].value).toBe('new');
+    expect(root.children[0].children[0].value).toBe('old'); // original untouched
   });
 });
 
@@ -48,5 +79,13 @@ describe('jsonError + formatJson', () => {
     expect(out).toContain('"${orderId}"');
     expect(out).toContain('${count}');
     expect(out).toContain('\n');
+  });
+});
+
+describe('jsonRoot default', () => {
+  it('is an object with one blank field', () => {
+    const r = jsonRoot();
+    expect(r.type).toBe('object');
+    expect(r.children).toHaveLength(1);
   });
 });

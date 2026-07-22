@@ -10,6 +10,7 @@
  * State-shaped input: these take the plain popup-state object, not the React class.
  */
 import { EXPR_RE } from './constants';
+import { collectJsonValues } from './payload';
 
 export function collectStrings(s) {
   const out = [s.url];
@@ -17,7 +18,7 @@ export function collectStrings(s) {
   s.headers.forEach((r) => out.push(r.key, r.value));
   out.push(s.bearerToken, s.basicUser, s.basicPass, s.apiKeyName, s.apiKeyValue);
   if (s.bodyType === 'raw') out.push(s.body);
-  if (s.bodyType === 'json') (s.jsonFields || []).forEach((r) => out.push(r.value));
+  if (s.bodyType === 'json') collectJsonValues(s.jsonRoot).forEach((v) => out.push(v));
   if (s.bodyType === 'urlencoded' || s.bodyType === 'form') s.form.forEach((r) => out.push(r.key, r.value));
   return out.filter(Boolean);
 }

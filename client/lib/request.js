@@ -8,7 +8,7 @@
  */
 import { BODY_METHODS, RAW_TYPES } from './constants';
 import { subst } from './expressions';
-import { compileJsonFields } from './payload';
+import { compileJson } from './payload';
 
 // A row is "active" when enabled and it has a key. Shared by params/headers/form.
 export function activeRows(rows) {
@@ -42,7 +42,7 @@ export function buildRequest(state) {
   const opts = { method, headers: hdrs };
   if (BODY_METHODS.includes(method) && bodyType !== 'none') {
     if (bodyType === 'json') {
-      opts.body = sub(compileJsonFields(state.jsonFields));
+      opts.body = sub(compileJson(state.jsonRoot));
       if (!hdrs['Content-Type']) hdrs['Content-Type'] = 'application/json';
     } else if (bodyType === 'raw' && body.trim()) {
       opts.body = sub(body);

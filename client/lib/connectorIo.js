@@ -29,7 +29,7 @@ export const CONFIG_PROP = 'fluxnova:restClientConfig';
 const PERSIST_KEYS = [
   'method', 'url', 'params', 'headers',
   'authType', 'bearerToken', 'basicUser', 'basicPass', 'apiKeyName', 'apiKeyValue', 'apiKeyIn',
-  'bodyType', 'rawType', 'body', 'form', 'jsonFields',
+  'bodyType', 'rawType', 'body', 'form', 'jsonRoot',
   'inputs', 'outputs',
   'techExceptions', 'bizExceptions', 'bizFormat'
 ];

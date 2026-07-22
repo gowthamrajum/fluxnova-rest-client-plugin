@@ -2,14 +2,21 @@
 /**
  * Payload builder for POST / PUT / PATCH bodies.
  *
- * The structured JSON builder turns key / type / value rows into a JSON body string
- * with ${…} expressions kept literal (they resolve at runtime — the connector evaluates
- * the payload inputParameter). `payloadString` is the single source of truth for the
- * literal body across live-send, the connector config, and the live preview.
+ * The structured builder is a TREE of nodes so any JSON shape works — objects, arrays,
+ * arrays of objects, objects whose values are arrays, nested to any depth. A node is:
+ *   { key, type, value, enabled, children }
+ * `key` matters only when the node is a child of an object. `value` is used by scalar
+ * types; `children` by object/array. ${…} expressions are kept literal (they resolve at
+ * runtime — the connector evaluates the payload inputParameter).
+ *
+ * `payloadString` is the single source of truth for the literal body across live-send,
+ * the connector config, and the live preview.
  */
 import { RAW_TYPES } from './constants';
 
 export const JSON_TYPES = [
+  ['object', 'Object'],
+  ['array', 'Array'],
   ['string', 'String'],
   ['number', 'Number'],
   ['boolean', 'Boolean'],
@@ -18,35 +25,68 @@ export const JSON_TYPES = [
   ['raw', 'Raw']
 ];
 
-export const jsonFieldRow = () => ({ key: '', value: '', type: 'string', enabled: true });
+export const isContainer = (type) => type === 'object' || type === 'array';
+
+export const jsonNode = (type = 'string') => ({ key: '', type, value: '', enabled: true, children: [] });
+export const jsonRoot = () => ({ key: '', type: 'object', value: '', enabled: true, children: [jsonNode()] });
 
 const hasExpr = (s) => /\$\{[^}]*\}/.test(s);
 
-// The JSON literal a single field contributes (value side of "key": <here>).
-function fieldLiteral(f) {
-  const v = f.value != null ? String(f.value) : '';
-  switch (f.type) {
+// The JSON literal a scalar node contributes.
+function scalarLiteral(node) {
+  const v = node.value != null ? String(node.value) : '';
+  switch (node.type) {
     case 'number': return v.trim() === '' ? '0' : v.trim();
     case 'boolean': return v.trim().toLowerCase() === 'true' ? 'true' : 'false';
     case 'null': return 'null';
-    case 'raw': return v.trim() === '' ? 'null' : v;                 // verbatim: numbers, nested JSON, unquoted ${…}
+    case 'raw': return v.trim() === '' ? 'null' : v;                 // verbatim: unquoted ${…}, nested JSON
     case 'expression': return JSON.stringify(hasExpr(v) ? v : '${' + v.trim() + '}'); // quoted "${…}"
     default: return JSON.stringify(v);                              // string
   }
 }
 
-// Compile the builder rows into a JSON object string (pretty by default).
-export function compileJsonFields(fields, pretty = true) {
-  const rows = (fields || []).filter((f) => f.enabled && f.key);
-  if (!rows.length) return '{}';
-  const entries = rows.map((f) => JSON.stringify(f.key) + (pretty ? ': ' : ':') + fieldLiteral(f));
-  return pretty ? '{\n' + entries.map((e) => '  ' + e).join(',\n') + '\n}' : '{' + entries.join(',') + '}';
+function compileNode(node, indent) {
+  const pad = '  '.repeat(indent);
+  const inner = '  '.repeat(indent + 1);
+  if (node.type === 'object') {
+    const rows = (node.children || []).filter((c) => c.enabled && c.key);
+    if (!rows.length) return '{}';
+    return '{\n' + rows.map((c) => inner + JSON.stringify(c.key) + ': ' + compileNode(c, indent + 1)).join(',\n') + '\n' + pad + '}';
+  }
+  if (node.type === 'array') {
+    const rows = (node.children || []).filter((c) => c.enabled);
+    if (!rows.length) return '[]';
+    return '[\n' + rows.map((c) => inner + compileNode(c, indent + 1)).join(',\n') + '\n' + pad + ']';
+  }
+  return scalarLiteral(node);
+}
+
+// Compile the tree into a JSON string (pretty). Root defaults to an empty object.
+export function compileJson(root) {
+  return compileNode(root || jsonRoot(), 0);
+}
+
+// Every scalar value in the tree — used to detect ${…} expressions for the Inputs sidebar.
+export function collectJsonValues(node, out = []) {
+  if (!node) return out;
+  if (isContainer(node.type)) (node.children || []).forEach((c) => collectJsonValues(c, out));
+  else out.push(node.value);
+  return out;
+}
+
+// Immutably map the node at `path` (array of child indices from the root) through `fn`.
+export function mapNodeAt(root, path, fn) {
+  if (!path.length) return fn(root);
+  const [i, ...rest] = path;
+  const children = root.children.slice();
+  children[i] = mapNodeAt(children[i], rest, fn);
+  return { ...root, children };
 }
 
 // Literal payload string for the current body mode (${…} kept). null = no textual body.
 export function payloadString(state) {
   if (state.bodyType === 'raw') return state.body && state.body.trim() ? state.body : null;
-  if (state.bodyType === 'json') return compileJsonFields(state.jsonFields);
+  if (state.bodyType === 'json') return compileJson(state.jsonRoot);
   if (state.bodyType === 'urlencoded') {
     const parts = (state.form || []).filter((r) => r.enabled && r.key).map((r) => r.key + '=' + r.value);
     return parts.length ? parts.join('&') : null;
@@ -68,11 +108,9 @@ export function jsonError(str) {
 }
 
 // Pretty-print a raw JSON string, preserving ${…} exactly (whether quoted or bare).
-// Returns the input unchanged if it doesn't parse.
 export function formatJson(str) {
   if (!str) return str;
   const exprs = [];
-  // Mask each ${…} as a distinct sentinel number — valid JSON in both string and bare positions.
   const masked = str.replace(/\$\{[^}]*\}/g, (m) => { exprs.push(m); return String(900000000 + exprs.length - 1); });
   try {
     const out = JSON.stringify(JSON.parse(masked), null, 2);

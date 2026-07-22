@@ -8,7 +8,7 @@ import { METHODS, BODY_METHODS } from './lib/constants';
 import { navigate } from './lib/paths';
 import { detectExpressions } from './lib/expressions';
 import { activeRows, buildRequest } from './lib/request';
-import { JSON_TYPES, jsonFieldRow, compileJsonFields, jsonError, formatJson } from './lib/payload';
+import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, formatJson, mapNodeAt } from './lib/payload';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
 import {
@@ -72,7 +72,7 @@ export default class RestClientPlugin extends React.PureComponent {
       rawType: 'json',
       body: '',
       form: [kvRow()],
-      jsonFields: [jsonFieldRow()],   // structured JSON builder rows
+      jsonRoot: jsonRoot(),           // structured JSON payload tree (nested objects/arrays)
 
       // inputs / outputs
       inputs: {},            // token '${x}' -> test value
@@ -134,7 +134,7 @@ export default class RestClientPlugin extends React.PureComponent {
       headers: pad(state.headers, kvRow),
       form: pad(state.form, kvRow),
       outputs: pad(state.outputs, outRow),
-      jsonFields: pad(state.jsonFields, jsonFieldRow, (r) => !r.key && !r.value),
+      jsonRoot: (state.jsonRoot && state.jsonRoot.type) ? state.jsonRoot : jsonRoot(),
       techExceptions: tech,
       bizExceptions: Array.isArray(state.bizExceptions) ? state.bizExceptions : []
     };
@@ -793,32 +793,25 @@ export default class RestClientPlugin extends React.PureComponent {
   }
 
   // Structured JSON builder: key / type / value rows compile to a JSON body, live-previewed.
+  // Structured JSON builder — a tree, so any shape works (nested objects, arrays,
+  // arrays of objects, object values that are arrays, …). Compiles to a live-previewed body.
   renderJsonBuilder() {
-    const fields = this.state.jsonFields;
-    const compiled = compileJsonFields(fields);
+    const root = this.state.jsonRoot;
+    const compiled = compileJson(root);
     const err = jsonError(compiled);
     return (
       <div className="rc-json">
-        <div className="rc-json-cols">
-          <span className="c-en" /><span className="c-k">Key</span><span className="c-t">Type</span><span className="c-v">Value</span><span className="c-x" />
+        <div className="rc-json-rootbar">
+          <span className="rc-json-rootlabel">Body is</span>
+          <select className="rc-select rc-json-roottype" value={root.type} onChange={this.setJson([], 'type')}>
+            <option value="object">an Object &#123; &#125;</option>
+            <option value="array">an Array [ ]</option>
+          </select>
+          <button type="button" className="rc-add-sm" onClick={this.addJson([])}>+ {root.type === 'array' ? 'item' : 'field'}</button>
         </div>
-        {fields.map((row, i) => (
-          <div className={'rc-json-row' + (row.enabled ? '' : ' off')} key={i}>
-            <input type="checkbox" className="c-en" checked={row.enabled} onChange={this.updateJson(i, 'enabled')} title="Enable/disable" />
-            <input className="c-k" placeholder="key" value={row.key} onChange={this.updateJson(i, 'key')} />
-            <select className="c-t" value={row.type} onChange={this.updateJson(i, 'type')}>
-              {JSON_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <input
-              className="c-v"
-              placeholder={row.type === 'expression' ? 'variable (e.g. orderId)' : row.type === 'null' ? '—' : 'value'}
-              value={row.value}
-              disabled={row.type === 'null'}
-              onChange={this.updateJson(i, 'value')}
-            />
-            <button className="c-x rc-del" onClick={this.removeJson(i)} title="remove">×</button>
-          </div>
-        ))}
+        <div className="rc-json-tree">
+          {root.children.map((c, i) => this.renderJsonNode(c, [i], root.type))}
+        </div>
         <div className="rc-payload-preview">
           <div className="rc-preview-head">
             <span>Payload preview</span>
@@ -830,19 +823,58 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  updateJson = (i, prop) => (e) => {
+  // Render one node (and its subtree) at `path`. parentType decides whether a key is shown.
+  renderJsonNode(node, path, parentType) {
+    const container = isContainer(node.type);
+    return (
+      <div className="rc-jn" key={path.join('.')}>
+        <div className={'rc-jn-row' + (node.enabled ? '' : ' off')}>
+          <input type="checkbox" className="c-en" checked={node.enabled} onChange={this.setJson(path, 'enabled')} title="Enable/disable" />
+          {parentType === 'object'
+            ? <input className="rc-jn-key" placeholder="key" value={node.key} onChange={this.setJson(path, 'key')} />
+            : <span className="rc-jn-index">–</span>}
+          <select className="rc-select rc-jn-type" value={node.type} onChange={this.setJson(path, 'type')}>
+            {JSON_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {!container && node.type !== 'null' && (
+            <input
+              className="rc-jn-val"
+              placeholder={node.type === 'expression' ? 'variable (e.g. orderId)' : 'value'}
+              value={node.value}
+              onChange={this.setJson(path, 'value')}
+            />
+          )}
+          {container && <button type="button" className="rc-add-sm" onClick={this.addJson(path)}>+ {node.type === 'array' ? 'item' : 'field'}</button>}
+          <button className="rc-del" onClick={this.removeJson(path)} title="remove">×</button>
+        </div>
+        {container && node.children.length > 0 && (
+          <div className="rc-jn-children">
+            {node.children.map((c, i) => this.renderJsonNode(c, [...path, i], node.type))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  setJson = (path, prop) => (e) => {
     const val = prop === 'enabled' ? e.target.checked : e.target.value;
-    const rows = this.state.jsonFields.slice();
-    rows[i] = { ...rows[i], [prop]: val };
-    if (i === rows.length - 1 && (rows[i].key || rows[i].value)) rows.push(jsonFieldRow());
-    this.setState({ jsonFields: rows });
+    this.setState({ jsonRoot: mapNodeAt(this.state.jsonRoot, path, (n) => ({ ...n, [prop]: val })) });
   };
 
-  removeJson = (i) => () => {
-    const rows = this.state.jsonFields.slice();
-    rows.splice(i, 1);
-    if (!rows.length) rows.push(jsonFieldRow());
-    this.setState({ jsonFields: rows });
+  addJson = (path) => () => {
+    this.setState({ jsonRoot: mapNodeAt(this.state.jsonRoot, path, (n) => ({ ...n, children: [...n.children, jsonNode()] })) });
+  };
+
+  removeJson = (path) => () => {
+    const parent = path.slice(0, -1);
+    const idx = path[path.length - 1];
+    this.setState({
+      jsonRoot: mapNodeAt(this.state.jsonRoot, parent, (n) => {
+        const children = n.children.slice();
+        children.splice(idx, 1);
+        return { ...n, children };
+      })
+    });
   };
 
   // Raw body editor + (for JSON) a Format button and a live validity + preview.
