@@ -20,7 +20,8 @@
  */
 import { navGroovy } from './navigation';
 import { payloadString, contentTypeFor, payloadCode } from './payload';
-import { compileHandler, HANDLER_OUTPUT, needsRetry, RETRY_CYCLE } from './connectorCompile';
+import { compileHandler, HANDLER_OUTPUT, needsRetry } from './connectorCompile';
+import { retryCycle } from './exceptions';
 
 export const CONNECTOR_ID = 'http-connector';
 export const CONFIG_PROP = 'fluxnova:restClientConfig';
@@ -31,7 +32,7 @@ const PERSIST_KEYS = [
   'authType', 'bearerToken', 'basicUser', 'basicPass', 'apiKeyName', 'apiKeyValue', 'apiKeyIn',
   'bodyType', 'rawType', 'body', 'form', 'jsonRoot', 'payloadSave',
   'inputs', 'outputs',
-  'techExceptions', 'bizExceptions', 'bizFormat'
+  'techExceptions', 'bizExceptions', 'bizFormat', 'retryPolicy'
 ];
 
 function getBo(element) { return (element && (element.businessObject || element)) || null; }
@@ -215,8 +216,8 @@ export function buildExtensionValues(create, bo, state) {
   const preserved = existing.filter((v) =>
     typeOf(v) !== 'camunda:Connector' && v !== props && typeOf(v) !== 'camunda:FailedJobRetryTimeCycle');
   const out = [...preserved, buildConnector(create, state), buildProperties(create, props, state)];
-  // Retry actions need the async job executor — add a retry cycle (asyncBefore is set separately).
-  if (needsRetry(state)) out.push(create('camunda:FailedJobRetryTimeCycle', { body: RETRY_CYCLE }));
+  // Retry actions need the async job executor — add the configured retry cycle (asyncBefore set separately).
+  if (needsRetry(state)) out.push(create('camunda:FailedJobRetryTimeCycle', { body: retryCycle(state.retryPolicy) }));
   return out;
 }
 

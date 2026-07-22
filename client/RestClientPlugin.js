@@ -14,13 +14,14 @@ import { readConnector, writeConnector } from './lib/connectorIo';
 import { compileHandler } from './lib/connectorCompile';
 import { IconSend, IconSave, IconCheck, IconClose, IconPlus, IconChevronLeft, IconChevronRight } from './icons';
 import {
-  TECH_ACTION_DEFS, BIZ_ACTION_DEFS, BIZ_FORMATS, STATUS_PRESETS,
-  defaultTechExceptions, techRule, bizRow, anyActionOn, statusShort
+  TECH_ACTION_DEFS, BIZ_ACTION_DEFS, BIZ_FORMATS, STATUS_PRESETS, RETRY_UNITS,
+  defaultTechExceptions, techRule, bizRow, anyActionOn, statusShort,
+  defaultRetryPolicy, retryInterval, retryCycle
 } from './lib/exceptions';
 
 // Left-column tabs, grouped: request definition | response handling. All share `state.tab`.
 const REQ_TABS = [['params', 'Params'], ['authorization', 'Authorization'], ['headers', 'Headers'], ['body', 'Body']];
-const RESP_TABS = [['outputs', 'Outputs'], ['technical', 'Technical'], ['business', 'Business']];
+const RESP_TABS = [['exceptions', 'Exception Handling'], ['result', 'Response Handling']];
 
 const kvRow = () => ({ key: '', value: '', desc: '', enabled: true });
 const outRow = () => ({ name: '', path: '' });
@@ -85,8 +86,9 @@ export default class RestClientPlugin extends React.PureComponent {
 
       // exception handling (engine-agnostic design-time metadata; persisted in snapshot)
       techExceptions: defaultTechExceptions(),   // { rules: [{ status, code, actions }] }
-      bizExceptions: [],                         // [{ name, script, actions }]
-      bizFormat: 'groovy',                       // language for the business-check scripts
+      bizExceptions: [],                         // Data Exception checks: [{ name, script, actions }]
+      bizFormat: 'groovy',                       // language for the parse/validation scripts
+      retryPolicy: defaultRetryPolicy(),         // { attempts, intervals:[{value,unit}] } — task retry cycle
 
       // response
       sending: false,
@@ -142,7 +144,9 @@ export default class RestClientPlugin extends React.PureComponent {
       jsonRoot: (state.jsonRoot && state.jsonRoot.type) ? state.jsonRoot : jsonRoot(),
       payloadSave: state.payloadSave === 'js' ? 'js' : 'groovy',   // payload is always a script now
       techExceptions: tech,
-      bizExceptions: Array.isArray(state.bizExceptions) ? state.bizExceptions : []
+      bizExceptions: Array.isArray(state.bizExceptions) ? state.bizExceptions : [],
+      retryPolicy: (state.retryPolicy && Array.isArray(state.retryPolicy.intervals) && state.retryPolicy.intervals.length)
+        ? state.retryPolicy : defaultRetryPolicy()
     };
   }
 
@@ -236,9 +240,8 @@ export default class RestClientPlugin extends React.PureComponent {
   // Badge counts for the response-handling tabs.
   respCount(tab) {
     const s = this.state;
-    if (tab === 'outputs') return s.outputs.filter((o) => o.name && o.path).length;
-    if (tab === 'technical') return s.techExceptions.rules.length;
-    if (tab === 'business') return s.bizExceptions.length;
+    if (tab === 'exceptions') return s.techExceptions.rules.length;
+    if (tab === 'result') return s.outputs.filter((o) => o.name && o.path).length + s.bizExceptions.length;
     return 0;
   }
 
@@ -361,9 +364,10 @@ export default class RestClientPlugin extends React.PureComponent {
     const { method, url, tab, sending, respOpen } = this.state;
     const label = this.taskLabel();
     // A collapsible Response panel lives under the request tabs (not the config tabs).
-    const showResponse = tab !== 'technical' && tab !== 'business';
+    const configTab = tab === 'exceptions' || tab === 'result';
+    const showResponse = !configTab;
     // When the response is collapsed (or absent), the request editor fills the height.
-    const tallBody = tab === 'technical' || tab === 'business' || !respOpen;
+    const tallBody = configTab || !respOpen;
 
     return (
       <Modal onClose={this.close} className="rc-modal">
@@ -406,9 +410,8 @@ export default class RestClientPlugin extends React.PureComponent {
                   {tab === 'authorization' && this.renderAuth()}
                   {tab === 'headers' && this.renderKvTable('headers', 'Headers')}
                   {tab === 'body' && this.renderBody()}
-                  {tab === 'outputs' && this.renderOutputs()}
-                  {tab === 'technical' && this.renderTechExceptions()}
-                  {tab === 'business' && this.renderBizExceptions()}
+                  {tab === 'exceptions' && this.renderTechExceptions()}
+                  {tab === 'result' && this.renderResponseHandling()}
                 </div>
 
                 {showResponse && this.renderResponse()}
@@ -498,8 +501,6 @@ export default class RestClientPlugin extends React.PureComponent {
     const { outputs, response } = this.state;
     const body = response && response.body;
     return (
-      <div className="rc-exc">
-        <p className="rc-exc-hint">Map response fields to process variables with a JSON path (<code>data[0].id</code>, <code>items[*].name</code>). Values preview live against the last response.</p>
       <table className="rc-io-table rc-io-card">
         <thead>
           <tr><th>Variable</th><th>JSON path</th><th className="rc-io-xcol" /></tr>
@@ -525,7 +526,6 @@ export default class RestClientPlugin extends React.PureComponent {
           })}
         </tbody>
       </table>
-      </div>
     );
   }
 
@@ -566,11 +566,16 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
+  // True when any of the given rules/checks has its Retry action toggled on.
+  retryOn(list) {
+    return (list || []).some((r) => r.actions && r.actions.retry && r.actions.retry.on);
+  }
+
   renderTechExceptions() {
     const rules = this.state.techExceptions.rules;
     return (
       <div className="rc-exc">
-        <p className="rc-exc-hint">Add a rule for each failure you want to handle: pick a status, then toggle any actions. <b>Log</b> and <b>Throw incident</b> take a message; <b>Throw BPMN error</b> takes a code an error boundary event can catch.</p>
+        <p className="rc-exc-hint">Add a rule for each HTTP failure you want to handle: pick a status, then toggle any actions. <b>Log</b> / <b>Throw incident</b> take a message; <b>Error boundary event</b> takes a code an error boundary event catches; <b>Retry</b> uses the policy below.</p>
         {rules.length === 0 && (
           <div className="rc-exc-blank">No error handling yet. Add a rule to react to HTTP failures.</div>
         )}
@@ -593,10 +598,58 @@ export default class RestClientPlugin extends React.PureComponent {
           ))}
         </div>
         <button type="button" className="rc-add" onClick={this.addTechRule}><IconPlus />Add error rule</button>
+        {this.retryOn(rules) && this.renderRetryForm()}
         {this.renderCodePreview()}
       </div>
     );
   }
+
+  /* ---- Retry policy: attempts + interval(s) -> failedJobRetryTimeCycle on the task ---- */
+
+  renderRetryForm() {
+    const p = this.state.retryPolicy;
+    const staged = p.intervals.length > 1;
+    return (
+      <div className="rc-retry">
+        <div className="rc-retry-head"><span className="rc-code-title">Retry policy</span><span className="rc-retry-cycle" title="failedJobRetryTimeCycle">{retryCycle(p)}</span></div>
+        <div className="rc-retry-row">
+          {!staged && (
+            <label className="rc-retry-field"><span>Attempts</span>
+              <input className="rc-io-input" type="number" min="1" value={p.attempts} onChange={this.setRetryAttempts} />
+            </label>
+          )}
+          <div className="rc-retry-ints">
+            <span className="rc-retry-lbl">{staged ? 'Intervals (staged)' : 'Interval'}</span>
+            {p.intervals.map((iv, i) => (
+              <div className="rc-retry-int" key={i}>
+                <input className="rc-io-input rc-retry-num" type="number" min="1" value={iv.value} onChange={this.setRetryInterval(i, 'value')} />
+                <select className="rc-select" value={iv.unit} onChange={this.setRetryInterval(i, 'unit')}>
+                  {RETRY_UNITS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                {p.intervals.length > 1 && <button className="rc-del" onClick={this.removeRetryInterval(i)} title="remove">×</button>}
+              </div>
+            ))}
+            <button type="button" className="rc-add-sm" onClick={this.addRetryInterval}><IconPlus />interval</button>
+          </div>
+        </div>
+        <p className="rc-code-note">Written as <code>camunda:failedJobRetryTimeCycle</code> (task set <code>asyncBefore</code>). Add more intervals for staged backoff.</p>
+      </div>
+    );
+  }
+
+  setRetryPolicy(patch) { this.setState({ retryPolicy: { ...this.state.retryPolicy, ...patch } }); }
+  setRetryAttempts = (e) => this.setRetryPolicy({ attempts: e.target.value });
+  setRetryInterval = (i, prop) => (e) => {
+    const intervals = this.state.retryPolicy.intervals.slice();
+    intervals[i] = { ...intervals[i], [prop]: e.target.value };
+    this.setRetryPolicy({ intervals });
+  };
+  addRetryInterval = () => this.setRetryPolicy({ intervals: [...this.state.retryPolicy.intervals, retryInterval()] });
+  removeRetryInterval = (i) => () => {
+    const intervals = this.state.retryPolicy.intervals.slice();
+    intervals.splice(i, 1);
+    this.setRetryPolicy({ intervals: intervals.length ? intervals : [retryInterval()] });
+  };
 
   // Live preview of the native connector script that Save writes (technical + business
   // combined), with the Groovy/JavaScript choice that determines its language.
@@ -613,7 +666,7 @@ export default class RestClientPlugin extends React.PureComponent {
             ))}
           </div>
         </div>
-        <pre className="rc-code-body">{handler ? handler.script : '// Add an error rule or a business check to generate the handler script.'}</pre>
+        <pre className="rc-code-body">{handler ? handler.script : '// Add an error rule or a data-exception check to generate the handler script.'}</pre>
         <p className="rc-code-note">Saved into the Service Task as a native <code>{bizFormat === 'js' ? 'javascript' : 'groovy'}</code> connector output parameter — the engine runs it, no custom backend.</p>
       </div>
     );
@@ -641,15 +694,20 @@ export default class RestClientPlugin extends React.PureComponent {
     this.setTechRule(i, { actions: { ...this.state.techExceptions.rules[i].actions, [key]: { ...cur, value } } });
   };
 
-  /* ---- Business Exceptions: custom script (throws = exception) -> toggleable actions ---- */
+  /* ---- Response Handling: Parse the data + Data Exception ---- */
 
-  renderBizExceptions() {
+  renderResponseHandling() {
     const { bizExceptions, bizFormat } = this.state;
     return (
       <div className="rc-exc rc-biz">
-        <p className="rc-exc-hint">Add a check: a script (in the language chosen below) over the response. If it <b>throws</b>, that's a business exception — run whichever actions are toggled on. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>.</p>
+        <div className="rc-exc-subhead">Parse the data</div>
+        <p className="rc-exc-hint">Extract response fields into process variables with a JSON path (<code>data[0].id</code>, <code>items[*].name</code>). Values preview live against the last response.</p>
+        {this.renderOutputs()}
+
+        <div className="rc-exc-subhead rc-exc-subhead-2">Data Exception</div>
+        <p className="rc-exc-hint">If parsing or validating the response fails, run these actions. Add a check — a script (in the language chosen below); if it <b>throws</b>, its actions fire. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>.</p>
         {bizExceptions.length === 0 && (
-          <div className="rc-exc-blank">No business checks yet. Add one to validate the response.</div>
+          <div className="rc-exc-blank">No data-exception checks yet. Add one to validate the parsed result.</div>
         )}
         <div className="rc-exc-list">
           {bizExceptions.map((r, i) => (
@@ -670,6 +728,7 @@ export default class RestClientPlugin extends React.PureComponent {
           ))}
         </div>
         <button type="button" className="rc-add" onClick={this.addBizRule}><IconPlus />Add check</button>
+        {this.retryOn(bizExceptions) && this.renderRetryForm()}
         {this.renderCodePreview()}
       </div>
     );

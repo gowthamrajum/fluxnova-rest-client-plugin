@@ -106,9 +106,11 @@ export function activeBiz(state) {
   return (state.bizExceptions || []).filter((r) => r.script && r.script.trim() && anyActionOn(r.actions));
 }
 
-// True when any technical rule opts into Retry (drives asyncBefore + retry cycle on the task).
+// True when any rule (technical or data-exception) opts into Retry — drives asyncBefore
+// + the failedJobRetryTimeCycle on the task.
 export function needsRetry(state) {
-  return activeTech(state).some((r) => r.actions.retry && r.actions.retry.on);
+  const on = (r) => r.actions.retry && r.actions.retry.on;
+  return activeTech(state).some(on) || activeBiz(state).some(on);
 }
 
 /**

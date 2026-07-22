@@ -13,19 +13,36 @@
  */
 
 // An action definition: which toggle to show, and whether it carries a free-text field.
+// `error` throws a BpmnError, routed to an error boundary event.
 export const TECH_ACTION_DEFS = [
   { key: 'log', label: 'Log', field: 'Log message', placeholder: 'message name' },
   { key: 'incident', label: 'Throw incident', field: 'Incident message', placeholder: 'message name' },
-  { key: 'error', label: 'Throw BPMN error', field: 'BPMN error code', placeholder: 'error code' },
-  { key: 'retry', label: 'Retry', field: null }
+  { key: 'retry', label: 'Retry', field: null },
+  { key: 'error', label: 'Error boundary event', field: 'BPMN error code', placeholder: 'error code' }
 ];
 
-// Business checks fire after a successful response, so Retry doesn't apply.
-export const BIZ_ACTION_DEFS = [
-  { key: 'log', label: 'Log', field: 'Log message', placeholder: 'message name' },
-  { key: 'incident', label: 'Throw incident', field: 'Incident message', placeholder: 'message name' },
-  { key: 'error', label: 'Throw BPMN error', field: 'BPMN error code', placeholder: 'error code' }
-];
+// Data-exception actions (fire when parsing/validation fails) — the same set.
+export const BIZ_ACTION_DEFS = TECH_ACTION_DEFS;
+
+/* ---- retry policy (task-level: attempts + interval(s) -> failedJobRetryTimeCycle) ---- */
+
+export const RETRY_UNITS = [['s', 'seconds'], ['m', 'minutes'], ['h', 'hours']];
+export const retryInterval = () => ({ value: 30, unit: 's' });
+export function defaultRetryPolicy() {
+  return { attempts: 3, intervals: [retryInterval()] };
+}
+function isoDuration(i) {
+  const n = parseInt(i.value, 10) || 0;
+  return 'PT' + n + (i.unit === 'm' ? 'M' : i.unit === 'h' ? 'H' : 'S');
+}
+// Compile to a Camunda retry cycle: one interval -> R{attempts}/PT30S; several -> a staged list.
+export function retryCycle(policy) {
+  const p = policy || defaultRetryPolicy();
+  const ints = (p.intervals || []).filter((i) => (parseInt(i.value, 10) || 0) > 0);
+  if (!ints.length) return 'R' + (parseInt(p.attempts, 10) || 3) + '/PT30S';
+  if (ints.length === 1) return 'R' + (parseInt(p.attempts, 10) || 3) + '/' + isoDuration(ints[0]);
+  return ints.map(isoDuration).join(',');
+}
 
 export const BIZ_FORMATS = [['groovy', 'Groovy'], ['js', 'JavaScript']];
 
