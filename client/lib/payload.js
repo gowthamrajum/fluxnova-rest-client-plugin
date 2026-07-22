@@ -104,6 +104,16 @@ export function contentTypeFor(state) {
 /* ---- payload as a script (Groovy / JS) — build the object + serialize it ---- */
 
 function gStr(s) { return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, '\\n') + "'"; }
+// Double-quoted Groovy GString (interpolates ${var}); JS template literal (same).
+function gStrD(s) { return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; }
+function jTpl(s) { return '`' + String(s).replace(/\\/g, '\\\\').replace(/`/g, '\\`') + '`'; }
+
+// A form value as a language literal: interpolating when it holds ${…}, plain otherwise.
+function formValueLit(v, lang) {
+  const s = v == null ? '' : String(v);
+  if (lang === 'js') return hasExpr(s) ? jTpl(s) : JSON.stringify(s);
+  return hasExpr(s) ? gStrD(s) : gStr(s);
+}
 
 // The scalar node as a language literal. `expression` becomes a bare variable reference
 // (the ${…} inner), so the generated script reads it from a process variable.
@@ -154,6 +164,15 @@ export function payloadCode(state, lang) {
     return js
       ? '`' + b.replace(/\\/g, '\\\\').replace(/`/g, '\\`') + '`'
       : '"""' + b.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '"""';
+  }
+  if (state.bodyType === 'urlencoded') {
+    const rows = (state.form || []).filter((r) => r.enabled && r.key);
+    if (!rows.length) return null;
+    const pairs = rows.map((r) => '  [' + (js ? JSON.stringify(r.key) : gStr(r.key)) + ', ' + formValueLit(r.value, lang) + ']');
+    const list = '[\n' + pairs.join(',\n') + '\n]';
+    return js
+      ? list + ".map(function (e) { return encodeURIComponent(e[0]) + '=' + encodeURIComponent(e[1]); }).join('&')"
+      : list + ".collect { java.net.URLEncoder.encode(it[0], 'UTF-8') + '=' + java.net.URLEncoder.encode(it[1] as String, 'UTF-8') }.join('&')";
   }
   return null;
 }

@@ -821,7 +821,7 @@ export default class RestClientPlugin extends React.PureComponent {
         {bodyType === 'json' && this.renderJsonBuilder()}
         {bodyType === 'raw' && this.renderRawBody()}
         {(bodyType === 'urlencoded' || bodyType === 'form') && this.renderKvTable('form', bodyType === 'form' ? 'Form Data' : 'URL-encoded Fields')}
-        {(bodyType === 'json' || bodyType === 'raw') && this.renderPayloadPersist()}
+        {(bodyType === 'json' || bodyType === 'raw' || bodyType === 'urlencoded') && this.renderPayloadPersist()}
       </div>
     );
   }

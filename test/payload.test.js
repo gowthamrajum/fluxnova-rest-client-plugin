@@ -113,6 +113,22 @@ describe('payloadCode — payload as a script', () => {
     expect(payloadCode({ bodyType: 'raw', body: '{"id":"${x}"}' }, 'groovy')).toBe('"""{"id":"${x}"}"""');
     expect(payloadCode({ bodyType: 'raw', body: 'hi ${x}' }, 'js')).toBe('`hi ${x}`');
   });
+  it('urlencoded builds an encoded-and-joined form string; ${…} values interpolate', () => {
+    const st = { bodyType: 'urlencoded', form: [
+      { key: 'grant_type', value: 'client_credentials', enabled: true },
+      { key: 'client_id', value: '${clientId}', enabled: true }
+    ] };
+    const g = payloadCode(st, 'groovy');
+    expect(g).toContain("['grant_type', 'client_credentials']");
+    expect(g).toContain('[\'client_id\', "${clientId}"]');   // expression value -> GString
+    expect(g).toContain("java.net.URLEncoder.encode");
+    expect(g).toContain(".join('&')");
+    const j = payloadCode(st, 'js');
+    expect(j).toContain('["client_id", `${clientId}`]');      // expression value -> template literal
+    expect(j).toContain('encodeURIComponent');
+    expect(j).toContain(".join('&')");
+    expect(payloadCode({ bodyType: 'urlencoded', form: [] }, 'groovy')).toBeNull();
+  });
 });
 
 describe('jsonRoot default', () => {

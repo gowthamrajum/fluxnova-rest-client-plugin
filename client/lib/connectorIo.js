@@ -154,7 +154,7 @@ function headerRowsFor(state, hasPayload) {
 // payload, per the "Save payload as" setting. Returns null when there's no body.
 function payloadInput(create, state) {
   const mode = state.payloadSave || 'json';
-  const scripted = (mode === 'groovy' || mode === 'js') && (state.bodyType === 'json' || state.bodyType === 'raw');
+  const scripted = (mode === 'groovy' || mode === 'js') && (state.bodyType === 'json' || state.bodyType === 'raw' || state.bodyType === 'urlencoded');
   if (scripted) {
     const script = payloadCode(state, mode);
     if (!script) return null;
