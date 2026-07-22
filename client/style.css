@@ -424,6 +424,39 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 }
 .rc-bodyarea:focus { outline: none; border-color: var(--rc-orange); }
 
+/* structured JSON payload builder */
+.rc-json { max-width: 760px; }
+.rc-json-cols, .rc-json-row {
+  display: grid; grid-template-columns: 28px 1.2fr 130px 1.6fr 24px; gap: 6px; align-items: center;
+}
+.rc-json-cols { padding: 0 0 6px; font-size: 11px; color: var(--rc-faint); text-transform: uppercase; letter-spacing: .3px; }
+.rc-json-cols .c-k, .rc-json-cols .c-t, .rc-json-cols .c-v { padding-left: 8px; }
+.rc-json-row { padding: 2px 0; }
+.rc-json-row.off input:not(.c-en), .rc-json-row.off select { opacity: .45; }
+.rc-json-row input:not(.c-en), .rc-json-row select.c-t {
+  padding: 7px 9px; border: 1px solid var(--rc-border-2); border-radius: var(--rc-r-sm);
+  font-family: var(--rc-mono); font-size: 12px; background: #fff;
+}
+.rc-json-row select.c-t { font-family: inherit; cursor: pointer; }
+.rc-json-row input:not(.c-en):focus, .rc-json-row select.c-t:focus { outline: none; border-color: var(--rc-orange); box-shadow: 0 0 0 2px rgba(255,108,55,0.12); }
+.rc-json-row input.c-en { justify-self: center; width: 15px; height: 15px; accent-color: var(--rc-orange); cursor: pointer; }
+
+/* payload preview (shared look with raw JSON) */
+.rc-payload-preview { margin-top: 14px; }
+.rc-preview-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.rc-preview-head span:first-child { font-size: 11px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: .05em; }
+.rc-preview-body {
+  margin: 0; font-family: var(--rc-mono); font-size: 12px; line-height: 1.55;
+  background: #0f172a; color: #e2e8f0; border-radius: var(--rc-r-md); padding: 12px; overflow: auto; max-height: 220px;
+}
+.rc-json-flag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; }
+.rc-json-flag.ok { background: #ecfdf5; color: #059669; }
+.rc-json-flag.bad { background: #fef2f2; color: #dc2626; }
+
+.rc-raw-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rc-mini { border: 1px solid var(--rc-border-2); background: #fff; border-radius: var(--rc-r-sm); padding: 5px 12px; font-size: 11.5px; font-weight: 600; color: var(--rc-muted); cursor: pointer; }
+.rc-mini:hover { color: var(--rc-ink); border-color: var(--rc-faint); }
+
 /* ---------- response ---------- */
 .rc-response {
   border-top: 1px solid var(--rc-border);

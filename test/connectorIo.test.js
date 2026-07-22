@@ -53,9 +53,13 @@ describe('writeConnector output shape', () => {
     expect(byName('payload').value).toBe('{"note":"${msg}"}');
 
     const outs = connector.inputOutput.outputParameters;
-    expect(outs.map((o) => o.name)).toEqual(['status', 'firstId']);
+    // user output mappings + the compiled exception-handling script
+    expect(outs.map((o) => o.name)).toEqual(['status', 'firstId', 'restClientChecks']);
     expect(outs[1].definition.$type).toBe('camunda:Script');
     expect(outs[1].definition.value).toContain('body?.items?.getAt(0)?.id');
+    const handler = outs.find((o) => o.name === 'restClientChecks');
+    expect(handler.definition.scriptFormat).toBe('groovy');
+    expect(handler.definition.value).toContain('if (sc >= 400 && sc < 500)');
 
     const props = values.find((v) => v.$type === 'camunda:Properties');
     expect(props.values.find((p) => p.name === CONFIG_PROP)).toBeTruthy();

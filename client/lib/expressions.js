@@ -17,6 +17,7 @@ export function collectStrings(s) {
   s.headers.forEach((r) => out.push(r.key, r.value));
   out.push(s.bearerToken, s.basicUser, s.basicPass, s.apiKeyName, s.apiKeyValue);
   if (s.bodyType === 'raw') out.push(s.body);
+  if (s.bodyType === 'json') (s.jsonFields || []).forEach((r) => out.push(r.value));
   if (s.bodyType === 'urlencoded' || s.bodyType === 'form') s.form.forEach((r) => out.push(r.key, r.value));
   return out.filter(Boolean);
 }

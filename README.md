@@ -8,8 +8,9 @@ build a request visually, send it (cross-origin calls work — see the proxy bel
 response into process variables, define **technical & business exception handling**, and **save it
 straight back into the task's connector config**.
 
-> Status: `v0.3.0` — request builder, inputs/outputs, CORS-free proxy, BPMN round-trip, and
-> technical + business exception handling. Apache-2.0.
+> Status: `v0.4.0` — request builder, JSON payload builder, inputs/outputs, CORS-free proxy,
+> technical + business exception handling, and Save-to-Task that writes **real, executable
+> connector configuration** (no custom backend). Apache-2.0.
 
 ---
 
@@ -17,7 +18,9 @@ straight back into the task's connector config**.
 
 - **Request builder** — method + URL, query params, headers, and auth (Bearer / Basic / API-Key in
   header or query), with per-row enable/disable and descriptions.
-- **Bodies** — raw (JSON / text / XML), `x-www-form-urlencoded`, and `multipart/form-data`.
+- **Payload builder** — a structured **JSON builder** (key / type / value rows → JSON) with a live
+  payload preview + validity, a raw editor (JSON / text / XML with **Format** + validation),
+  `x-www-form-urlencoded`, and `multipart/form-data`. `${vars}` work throughout.
 - **Inputs sidebar** — every `${expression}` used anywhere in the request is auto-detected and gets
   a test-value field; values are substituted so the request actually runs.
 - **Send that works cross-origin** — requests go through a tiny **main-process proxy** (Node.js, no
@@ -30,9 +33,13 @@ straight back into the task's connector config**.
   can catch), **Throw incident**, **Retry**, or **Log & ignore**.
 - **Business exceptions** — named checks, each a small **Groovy/JS script** over the response; if
   the script **throws**, that's a business exception → **Log info / Log error / Throw BPMN error**.
-- **Save to Task** — writes the request into the Service Task's `http-connector` config
-  (`camunda:inputOutput`) plus a JSON snapshot (which also carries the exception handling), so
-  reopening restores the builder exactly. One undoable edit.
+- **Save to Task → real connector config** — compiles the whole modal into a standard
+  `http-connector` the engine runs natively: `url` / `method` / `headers` / `payload` input
+  parameters, output-parameter mappings, and a native **`camunda:script`** output parameter that
+  encodes the exception rules (status checks → `BpmnError` / incident / retry / log; business
+  scripts → actions). Retry rules also set `asyncBefore` + a retry cycle. No custom backend or
+  delegate is required. A `camunda:Property` JSON snapshot is *also* written purely so the modal
+  reopens exactly as configured — nothing depends on it. One undoable edit.
 
 ---
 
@@ -105,8 +112,13 @@ Architecture:
 - `client/propertiesProvider.js` — injects the **Build request…** button and hands the popup the
   bpmn-js model services for the round-trip.
 - `client/lib/` — framework-free, unit-tested logic: `paths` (JSON-path engine), `expressions`,
-  `request` (builder), `navigation` (path→Groovy/JS extraction), `exceptions` (handling model),
+  `request` (builder), `payload` (JSON payload compile), `navigation` (path→Groovy/JS extraction),
+  `exceptions` (handling model), `connectorCompile` (rules → native handler script),
   `proxyClient`, `connectorIo` (BPMN read/write).
+
+> The generated exception script throws FluxNova's `org.finos.fluxnova.bpm.engine.delegate.BpmnError`
+> (see `BPMN_ERROR_CLASS` in `connectorCompile.js`); for stock Camunda 7, change it to
+> `org.camunda.bpm.engine.delegate.BpmnError`.
 
 ---
 

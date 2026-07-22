@@ -8,6 +8,7 @@ import { METHODS, BODY_METHODS } from './lib/constants';
 import { navigate } from './lib/paths';
 import { detectExpressions } from './lib/expressions';
 import { activeRows, buildRequest } from './lib/request';
+import { JSON_TYPES, jsonFieldRow, compileJsonFields, jsonError, formatJson } from './lib/payload';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
 import {
@@ -71,6 +72,7 @@ export default class RestClientPlugin extends React.PureComponent {
       rawType: 'json',
       body: '',
       form: [kvRow()],
+      jsonFields: [jsonFieldRow()],   // structured JSON builder rows
 
       // inputs / outputs
       inputs: {},            // token '${x}' -> test value
@@ -132,6 +134,7 @@ export default class RestClientPlugin extends React.PureComponent {
       headers: pad(state.headers, kvRow),
       form: pad(state.form, kvRow),
       outputs: pad(state.outputs, outRow),
+      jsonFields: pad(state.jsonFields, jsonFieldRow, (r) => !r.key && !r.value),
       techExceptions: tech,
       bizExceptions: Array.isArray(state.bizExceptions) ? state.bizExceptions : []
     };
@@ -606,7 +609,7 @@ export default class RestClientPlugin extends React.PureComponent {
     return (
       <div className="rc-exc rc-biz">
         <div className="rc-biz-head">
-          <p className="rc-exc-hint">Add a check: a script over the response. If it <b>throws</b>, that's a business exception — run whichever actions are toggled on. The parsed <code>response</code> (and <code>statusCode</code>, <code>headers</code>) are in scope.</p>
+          <p className="rc-exc-hint">Add a check: a script over the response. If it <b>throws</b>, that's a business exception — run whichever actions are toggled on. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>.</p>
           <div className="rc-seg small">
             {BIZ_FORMATS.map(([v, l]) => (
               <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
@@ -626,7 +629,7 @@ export default class RestClientPlugin extends React.PureComponent {
               <textarea
                 className="rc-biz-script"
                 spellCheck={false}
-                placeholder={bizFormat === 'groovy' ? "if (response?.status != 'ok') throw new RuntimeException('bad status')" : "if (response?.status !== 'ok') throw new Error('bad status')"}
+                placeholder={bizFormat === 'groovy' ? "if (body?.status != 'ok') throw new RuntimeException('bad status')" : "if (body?.status !== 'ok') throw new Error('bad status')"}
                 value={r.script}
                 onChange={this.setBizField(i, 'script')}
               />
@@ -762,7 +765,7 @@ export default class RestClientPlugin extends React.PureComponent {
     return (
       <div className="rc-body-editor">
         <div className="rc-body-modes">
-          {[['none', 'none'], ['raw', 'raw'], ['urlencoded', 'x-www-form-urlencoded'], ['form', 'form-data']].map(([val, lbl]) => (
+          {[['none', 'none'], ['json', 'JSON'], ['raw', 'raw'], ['urlencoded', 'x-www-form-urlencoded'], ['form', 'form-data']].map(([val, lbl]) => (
             <label key={val} className={'rc-radio' + (bodyType === val ? ' on' : '')}>
               <input type="radio" name="bodyType" value={val} checked={bodyType === val} onChange={this.setField('bodyType')} />
               {lbl}
@@ -782,16 +785,85 @@ export default class RestClientPlugin extends React.PureComponent {
         )}
 
         {bodyType === 'none' && <p className="rc-hint">This request does not have a body.</p>}
-        {bodyType === 'raw' && (
-          <textarea
-            className="rc-bodyarea"
-            spellCheck={false}
-            placeholder={rawType === 'json' ? '{\n  "key": "value"\n}' : ''}
-            value={this.state.body}
-            onChange={this.setField('body')}
-          />
-        )}
+        {bodyType === 'json' && this.renderJsonBuilder()}
+        {bodyType === 'raw' && this.renderRawBody()}
         {(bodyType === 'urlencoded' || bodyType === 'form') && this.renderKvTable('form', bodyType === 'form' ? 'Form Data' : 'URL-encoded Fields')}
+      </div>
+    );
+  }
+
+  // Structured JSON builder: key / type / value rows compile to a JSON body, live-previewed.
+  renderJsonBuilder() {
+    const fields = this.state.jsonFields;
+    const compiled = compileJsonFields(fields);
+    const err = jsonError(compiled);
+    return (
+      <div className="rc-json">
+        <div className="rc-json-cols">
+          <span className="c-en" /><span className="c-k">Key</span><span className="c-t">Type</span><span className="c-v">Value</span><span className="c-x" />
+        </div>
+        {fields.map((row, i) => (
+          <div className={'rc-json-row' + (row.enabled ? '' : ' off')} key={i}>
+            <input type="checkbox" className="c-en" checked={row.enabled} onChange={this.updateJson(i, 'enabled')} title="Enable/disable" />
+            <input className="c-k" placeholder="key" value={row.key} onChange={this.updateJson(i, 'key')} />
+            <select className="c-t" value={row.type} onChange={this.updateJson(i, 'type')}>
+              {JSON_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input
+              className="c-v"
+              placeholder={row.type === 'expression' ? 'variable (e.g. orderId)' : row.type === 'null' ? '—' : 'value'}
+              value={row.value}
+              disabled={row.type === 'null'}
+              onChange={this.updateJson(i, 'value')}
+            />
+            <button className="c-x rc-del" onClick={this.removeJson(i)} title="remove">×</button>
+          </div>
+        ))}
+        <div className="rc-payload-preview">
+          <div className="rc-preview-head">
+            <span>Payload preview</span>
+            <span className={'rc-json-flag ' + (err ? 'bad' : 'ok')}>{err ? 'invalid JSON' : 'valid JSON'}</span>
+          </div>
+          <pre className="rc-preview-body">{compiled}</pre>
+        </div>
+      </div>
+    );
+  }
+
+  updateJson = (i, prop) => (e) => {
+    const val = prop === 'enabled' ? e.target.checked : e.target.value;
+    const rows = this.state.jsonFields.slice();
+    rows[i] = { ...rows[i], [prop]: val };
+    if (i === rows.length - 1 && (rows[i].key || rows[i].value)) rows.push(jsonFieldRow());
+    this.setState({ jsonFields: rows });
+  };
+
+  removeJson = (i) => () => {
+    const rows = this.state.jsonFields.slice();
+    rows.splice(i, 1);
+    if (!rows.length) rows.push(jsonFieldRow());
+    this.setState({ jsonFields: rows });
+  };
+
+  // Raw body editor + (for JSON) a Format button and a live validity + preview.
+  renderRawBody() {
+    const { body, rawType } = this.state;
+    const err = rawType === 'json' ? jsonError(body) : null;
+    return (
+      <div className="rc-raw">
+        {rawType === 'json' && (
+          <div className="rc-raw-bar">
+            <button type="button" className="rc-mini" onClick={() => this.setState({ body: formatJson(this.state.body) })}>Format</button>
+            {body.trim() && <span className={'rc-json-flag ' + (err ? 'bad' : 'ok')}>{err ? 'invalid JSON' : 'valid JSON'}</span>}
+          </div>
+        )}
+        <textarea
+          className="rc-bodyarea"
+          spellCheck={false}
+          placeholder={rawType === 'json' ? '{\n  "id": "${orderId}"\n}' : ''}
+          value={body}
+          onChange={this.setField('body')}
+        />
       </div>
     );
   }

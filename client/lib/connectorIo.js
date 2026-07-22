@@ -19,6 +19,8 @@
  * bpmn-js wrapper that applies the result through modeling (undoable, marks dirty).
  */
 import { navGroovy } from './navigation';
+import { payloadString, contentTypeFor } from './payload';
+import { compileHandler, HANDLER_OUTPUT, needsRetry, RETRY_CYCLE } from './connectorCompile';
 
 export const CONNECTOR_ID = 'http-connector';
 export const CONFIG_PROP = 'fluxnova:restClientConfig';
@@ -27,7 +29,7 @@ export const CONFIG_PROP = 'fluxnova:restClientConfig';
 const PERSIST_KEYS = [
   'method', 'url', 'params', 'headers',
   'authType', 'bearerToken', 'basicUser', 'basicPass', 'apiKeyName', 'apiKeyValue', 'apiKeyIn',
-  'bodyType', 'rawType', 'body', 'form',
+  'bodyType', 'rawType', 'body', 'form', 'jsonFields',
   'inputs', 'outputs',
   'techExceptions', 'bizExceptions', 'bizFormat'
 ];
@@ -139,25 +141,35 @@ function outputParams(create, outputs) {
     });
 }
 
-// The raw request body, if this method/bodyType carries one (raw only for the connector).
-function payloadFor(state) {
-  if (state.bodyType === 'raw' && state.body && state.body.trim()) return state.body;
-  return null;
+// Header rows augmented with a Content-Type when the body implies one and none is set.
+function headerRowsFor(state, payload) {
+  const rows = (state.headers || []).filter((r) => r.enabled && r.key);
+  const ct = contentTypeFor(state);
+  const hasCt = rows.some((r) => /^content-type$/i.test(r.key));
+  if (payload != null && ct && !hasCt) return [...rows, { key: 'Content-Type', value: ct, enabled: true }];
+  return rows;
 }
 
 function buildConnector(create, state) {
+  const payload = payloadString(state);
   const inputs = [
     strInput(create, 'url', state.url || ''),
     strInput(create, 'method', state.method || 'GET'),
-    headersInput(create, state.headers)
+    headersInput(create, headerRowsFor(state, payload))
   ];
-  const payload = payloadFor(state);
   if (payload != null) inputs.push(strInput(create, 'payload', payload));
 
-  const inputOutput = create('camunda:InputOutput', {
-    inputParameters: inputs,
-    outputParameters: outputParams(create, state.outputs)
-  });
+  // Output params: the user's variable mappings + the native exception-handling script.
+  const outputs = outputParams(create, state.outputs);
+  const handler = compileHandler(state);
+  if (handler) {
+    outputs.push(create('camunda:OutputParameter', {
+      name: HANDLER_OUTPUT,
+      definition: create('camunda:Script', { scriptFormat: handler.scriptFormat, value: handler.script })
+    }));
+  }
+
+  const inputOutput = create('camunda:InputOutput', { inputParameters: inputs, outputParameters: outputs });
   return create('camunda:Connector', { connectorId: CONNECTOR_ID, inputOutput });
 }
 
@@ -185,8 +197,12 @@ function buildProperties(create, existing, state) {
 export function buildExtensionValues(create, bo, state) {
   const existing = values(bo && bo.extensionElements);
   const props = findProperties(bo);
-  const preserved = existing.filter((v) => typeOf(v) !== 'camunda:Connector' && v !== props);
-  return [...preserved, buildConnector(create, state), buildProperties(create, props, state)];
+  const preserved = existing.filter((v) =>
+    typeOf(v) !== 'camunda:Connector' && v !== props && typeOf(v) !== 'camunda:FailedJobRetryTimeCycle');
+  const out = [...preserved, buildConnector(create, state), buildProperties(create, props, state)];
+  // Retry actions need the async job executor — add a retry cycle (asyncBefore is set separately).
+  if (needsRetry(state)) out.push(create('camunda:FailedJobRetryTimeCycle', { body: RETRY_CYCLE }));
+  return out;
 }
 
 /**
@@ -205,5 +221,7 @@ export function writeConnector(services, element, state) {
   extensionElements.$parent = bo;
   newValues.forEach((v) => { v.$parent = extensionElements; });
 
-  modeling.updateProperties(element, { extensionElements });
+  // asyncBefore is required for the job executor to retry; only turn it ON (never clobber it off).
+  const props = needsRetry(state) ? { extensionElements, asyncBefore: true } : { extensionElements };
+  modeling.updateProperties(element, props);
 }
