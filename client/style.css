@@ -213,11 +213,11 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-in-input:focus { outline: none; border-color: var(--rc-accent); box-shadow: 0 0 0 3px rgba(0,149,255,0.12); }
 .rc-in-empty { color: var(--rc-faint); font-size: 12px; line-height: 1.6; padding: 8px 4px; }
 
-/* segmented toggle (reused by the business-exception language switch) */
-.rc-seg { display: inline-flex; border: 1px solid var(--rc-border-2); border-radius: 6px; overflow: hidden; }
+/* segmented toggle (reused by the language switch) — flex:none so it never clips */
+.rc-seg { display: inline-flex; flex: none; border: 1px solid var(--rc-border-2); border-radius: 6px; overflow: hidden; }
 .rc-seg button {
-  border: none; background: #fff; cursor: pointer;
-  font-size: 11px; padding: 4px 10px; color: var(--rc-muted);
+  border: none; background: #fff; cursor: pointer; white-space: nowrap;
+  font-size: 11px; padding: 4px 12px; color: var(--rc-muted);
   border-right: 1px solid var(--rc-border-2);
 }
 .rc-seg button:last-child { border-right: none; }
@@ -460,6 +460,18 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
   border-radius: var(--rc-r-sm); padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .rc-add-sm:hover { background: var(--rc-accent-soft); border-color: var(--rc-accent); }
+
+/* generated-connector-script preview (technical + business tabs) */
+.rc-code { margin-top: 18px; max-width: 760px; }
+.rc-code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.rc-code-title { font-size: 11px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: .05em; }
+.rc-code-body {
+  margin: 0; font-family: var(--rc-mono); font-size: 12px; line-height: 1.55;
+  background: #0f172a; color: #e2e8f0; border-radius: var(--rc-r-md); padding: 12px;
+  overflow: auto; max-height: 320px; white-space: pre;
+}
+.rc-code-note { font-size: 11px; color: var(--rc-faint); line-height: 1.5; margin: 7px 0 0; }
+.rc-code-note code { background: #eef2f5; }
 
 /* payload preview (shared look with raw JSON) */
 .rc-payload-preview { margin-top: 14px; }

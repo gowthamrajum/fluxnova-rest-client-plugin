@@ -11,6 +11,7 @@ import { activeRows, buildRequest } from './lib/request';
 import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, formatJson, mapNodeAt } from './lib/payload';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
+import { compileHandler } from './lib/connectorCompile';
 import { IconSend, IconSave, IconCheck, IconClose, IconPlus } from './icons';
 import {
   TECH_ACTION_DEFS, BIZ_ACTION_DEFS, BIZ_FORMATS, STATUS_PRESETS,
@@ -574,6 +575,28 @@ export default class RestClientPlugin extends React.PureComponent {
           ))}
         </div>
         <button type="button" className="rc-add" onClick={this.addTechRule}><IconPlus />Add error rule</button>
+        {this.renderCodePreview()}
+      </div>
+    );
+  }
+
+  // Live preview of the native connector script that Save writes (technical + business
+  // combined), with the Groovy/JavaScript choice that determines its language.
+  renderCodePreview() {
+    const { bizFormat } = this.state;
+    const handler = compileHandler(this.state);
+    return (
+      <div className="rc-code">
+        <div className="rc-code-head">
+          <span className="rc-code-title">Generated connector script</span>
+          <div className="rc-seg small">
+            {BIZ_FORMATS.map(([v, l]) => (
+              <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <pre className="rc-code-body">{handler ? handler.script : '// Add an error rule or a business check to generate the handler script.'}</pre>
+        <p className="rc-code-note">Saved into the Service Task as a native <code>{bizFormat === 'js' ? 'javascript' : 'groovy'}</code> connector output parameter — the engine runs it, no custom backend.</p>
       </div>
     );
   }
@@ -606,14 +629,7 @@ export default class RestClientPlugin extends React.PureComponent {
     const { bizExceptions, bizFormat } = this.state;
     return (
       <div className="rc-exc rc-biz">
-        <div className="rc-biz-head">
-          <p className="rc-exc-hint">Add a check: a script over the response. If it <b>throws</b>, that's a business exception — run whichever actions are toggled on. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>.</p>
-          <div className="rc-seg small">
-            {BIZ_FORMATS.map(([v, l]) => (
-              <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
-            ))}
-          </div>
-        </div>
+        <p className="rc-exc-hint">Add a check: a script (in the language chosen below) over the response. If it <b>throws</b>, that's a business exception — run whichever actions are toggled on. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>.</p>
         {bizExceptions.length === 0 && (
           <div className="rc-exc-blank">No business checks yet. Add one to validate the response.</div>
         )}
@@ -636,6 +652,7 @@ export default class RestClientPlugin extends React.PureComponent {
           ))}
         </div>
         <button type="button" className="rc-add" onClick={this.addBizRule}><IconPlus />Add check</button>
+        {this.renderCodePreview()}
       </div>
     );
   }
