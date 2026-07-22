@@ -43,3 +43,11 @@ export const IconClose = () => (
 export const IconPlus = () => (
   <Svg size={14}><path d="M12 5v14M5 12h14" /></Svg>
 );
+
+// chevrons (drawer collapse / expand)
+export const IconChevronRight = () => (
+  <Svg size={16}><path d="m9 18 6-6-6-6" /></Svg>
+);
+export const IconChevronLeft = () => (
+  <Svg size={16}><path d="m15 18-6-6 6-6" /></Svg>
+);

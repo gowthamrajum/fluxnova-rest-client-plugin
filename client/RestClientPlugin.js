@@ -12,7 +12,7 @@ import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, fo
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
 import { compileHandler } from './lib/connectorCompile';
-import { IconSend, IconSave, IconCheck, IconClose, IconPlus } from './icons';
+import { IconSend, IconSave, IconCheck, IconClose, IconPlus, IconChevronLeft, IconChevronRight } from './icons';
 import {
   TECH_ACTION_DEFS, BIZ_ACTION_DEFS, BIZ_FORMATS, STATUS_PRESETS,
   defaultTechExceptions, techRule, bizRow, anyActionOn, statusShort
@@ -52,6 +52,7 @@ export default class RestClientPlugin extends React.PureComponent {
       element: null,
       services: null,       // { modeling, bpmnFactory, commandStack } for BPMN round-trip
       saved: false,         // "Saved ✓" flash on the Save to Task button
+      inputsOpen: false,    // Inputs sidebar drawer — starts collapsed
 
       // request
       tab: 'params',
@@ -157,6 +158,7 @@ export default class RestClientPlugin extends React.PureComponent {
   };
 
   close = () => this.setState({ open: false });
+  clearResponse = () => this.setState({ response: null, error: null });
   setField = (field) => (e) => this.setState({ [field]: e.target.value });
 
   /* ---- workspace: resizable modal that remembers its size ---- */
@@ -408,8 +410,13 @@ export default class RestClientPlugin extends React.PureComponent {
 
                 {showResponse && this.renderResponse()}
             </div>
-            <div className="rc-side">
-              {this.renderInputsSection()}
+            <div className={'rc-side' + (this.state.inputsOpen ? '' : ' collapsed')}>
+              {this.state.inputsOpen ? this.renderInputsSection() : (
+                <button className="rc-side-reveal" onClick={() => this.setState({ inputsOpen: true })} title="Show Inputs">
+                  <IconChevronLeft />
+                  <span className="rc-side-vlabel">Inputs</span>
+                </button>
+              )}
             </div>
             <div className="rc-resize" ref={this.applyWorkspaceSize} onPointerDown={this.startResize} title="Drag to resize" />
           </div>
@@ -449,6 +456,9 @@ export default class RestClientPlugin extends React.PureComponent {
           <span>Inputs</span>
           {exprs.length > 0 && <span className="rc-badge">{exprs.length}</span>}
           {unfilled > 0 && <span className="rc-side-note">{unfilled} to fill</span>}
+          <button className="rc-side-collapse" onClick={() => this.setState({ inputsOpen: false })} title="Collapse">
+            <IconChevronRight />
+          </button>
         </div>
         <div className="rc-side-scroll">
           {exprs.length === 0 ? (
@@ -978,6 +988,7 @@ export default class RestClientPlugin extends React.PureComponent {
             {response && response.bytes != null && <span className="rc-time">{this.humanSize(response.bytes)}</span>}
             {response && response.shape && <span className={'rc-shape s-' + response.shape}>{response.shape}</span>}
             {response && response.via && <span className={'rc-via v-' + response.via} title={response.via === 'proxy' ? 'Sent through the main-process proxy (no CORS)' : 'Sent directly from the renderer (subject to CORS)'}>via {response.via}</span>}
+            <button className="rc-resp-close" onClick={this.clearResponse} title="Close response"><IconClose /></button>
           </div>
         </div>
 
