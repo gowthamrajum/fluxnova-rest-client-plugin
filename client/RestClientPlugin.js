@@ -352,8 +352,12 @@ export default class RestClientPlugin extends React.PureComponent {
 
   render() {
     if (!this.state.open) return null;
-    const { method, url, tab, sending } = this.state;
+    const { method, url, tab, sending, response, error } = this.state;
     const label = this.taskLabel();
+    // The response panel only appears once a request has actually run (or errored).
+    const showResponse = tab !== 'technical' && tab !== 'business' && !!(response || error);
+    // With no response reserved, the request editor fills the freed height.
+    const tallBody = tab === 'technical' || tab === 'business' || !showResponse;
 
     return (
       <Modal onClose={this.close} className="rc-modal">
@@ -391,7 +395,7 @@ export default class RestClientPlugin extends React.PureComponent {
                   </div>
                 </div>
 
-                <div className={'rc-tabbody' + (tab === 'technical' || tab === 'business' ? ' tall' : '')}>
+                <div className={'rc-tabbody' + (tallBody ? ' tall' : '')}>
                   {tab === 'params' && this.renderKvTable('params', 'Query Params')}
                   {tab === 'authorization' && this.renderAuth()}
                   {tab === 'headers' && this.renderKvTable('headers', 'Headers')}
@@ -401,7 +405,7 @@ export default class RestClientPlugin extends React.PureComponent {
                   {tab === 'business' && this.renderBizExceptions()}
                 </div>
 
-                {tab !== 'technical' && tab !== 'business' && this.renderResponse()}
+                {showResponse && this.renderResponse()}
             </div>
             <div className="rc-side">
               {this.renderInputsSection()}
@@ -948,16 +952,8 @@ export default class RestClientPlugin extends React.PureComponent {
 
   renderResponse() {
     const { response, error, respTab, respView } = this.state;
-    if (!response && !error) {
-      return (
-        <div className="rc-response">
-          <div className="rc-resp-empty">
-            <span>Response</span>
-            <p>Fill inputs, enter a URL, and hit <b>Send</b> to see the response here.</p>
-          </div>
-        </div>
-      );
-    }
+    // Only rendered after a Send (guarded by the caller); nothing to show otherwise.
+    if (!response && !error) return null;
     const ok = response && response.status >= 200 && response.status < 300;
     const hdrCount = response && response.headers ? Object.keys(response.headers).length : 0;
 
