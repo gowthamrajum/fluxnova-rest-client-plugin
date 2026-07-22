@@ -11,6 +11,7 @@ import { activeRows, buildRequest } from './lib/request';
 import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, formatJson, mapNodeAt } from './lib/payload';
 import { proxyBase, sendViaProxy } from './lib/proxyClient';
 import { readConnector, writeConnector } from './lib/connectorIo';
+import { IconSend, IconSave, IconCheck, IconClose, IconPlus } from './icons';
 import {
   TECH_ACTION_DEFS, BIZ_ACTION_DEFS, BIZ_FORMATS, STATUS_PRESETS,
   defaultTechExceptions, techRule, bizRow, anyActionOn, statusShort
@@ -375,7 +376,7 @@ export default class RestClientPlugin extends React.PureComponent {
                     onKeyDown={(e) => { if (e.key === 'Enter') this.send(); }}
                   />
                   <button className="rc-send" onClick={this.send} disabled={sending || !url.trim()}>
-                    {sending ? 'Sending…' : 'Send'}
+                    <IconSend />{sending ? 'Sending…' : 'Send'}
                   </button>
                 </div>
 
@@ -408,7 +409,7 @@ export default class RestClientPlugin extends React.PureComponent {
           </div>
         </Modal.Body>
         <Modal.Footer>
-          <button type="button" className="rc-secondary" onClick={this.close}>Close</button>
+          <button type="button" className="rc-secondary rc-close" onClick={this.close}><IconClose />Close</button>
           {this.state.services && (
             <button
               type="button"
@@ -417,12 +418,9 @@ export default class RestClientPlugin extends React.PureComponent {
               disabled={!url.trim()}
               title="Write this request into the Service Task's connector config (undoable)"
             >
-              {this.state.saved ? 'Saved ✓' : 'Save to Task'}
+              {this.state.saved ? <IconCheck /> : <IconSave />}{this.state.saved ? 'Saved' : 'Save to Task'}
             </button>
           )}
-          <button type="button" className="rc-send" onClick={this.send} disabled={sending || !url.trim()}>
-            {sending ? 'Sending…' : 'Send'}
-          </button>
         </Modal.Footer>
       </Modal>
     );
@@ -575,7 +573,7 @@ export default class RestClientPlugin extends React.PureComponent {
             </div>
           ))}
         </div>
-        <button type="button" className="rc-add" onClick={this.addTechRule}>+ Add error rule</button>
+        <button type="button" className="rc-add" onClick={this.addTechRule}><IconPlus />Add error rule</button>
       </div>
     );
   }
@@ -637,7 +635,7 @@ export default class RestClientPlugin extends React.PureComponent {
             </div>
           ))}
         </div>
-        <button type="button" className="rc-add" onClick={this.addBizRule}>+ Add check</button>
+        <button type="button" className="rc-add" onClick={this.addBizRule}><IconPlus />Add check</button>
       </div>
     );
   }
@@ -807,7 +805,7 @@ export default class RestClientPlugin extends React.PureComponent {
             <option value="object">an Object &#123; &#125;</option>
             <option value="array">an Array [ ]</option>
           </select>
-          <button type="button" className="rc-add-sm" onClick={this.addJson([])}>+ {root.type === 'array' ? 'item' : 'field'}</button>
+          <button type="button" className="rc-add-sm" onClick={this.addJson([])}><IconPlus />{root.type === 'array' ? 'item' : 'field'}</button>
         </div>
         <div className="rc-json-tree">
           {root.children.map((c, i) => this.renderJsonNode(c, [i], root.type))}
@@ -844,7 +842,7 @@ export default class RestClientPlugin extends React.PureComponent {
               onChange={this.setJson(path, 'value')}
             />
           )}
-          {container && <button type="button" className="rc-add-sm" onClick={this.addJson(path)}>+ {node.type === 'array' ? 'item' : 'field'}</button>}
+          {container && <button type="button" className="rc-add-sm" onClick={this.addJson(path)}><IconPlus />{node.type === 'array' ? 'item' : 'field'}</button>}
           <button className="rc-del" onClick={this.removeJson(path)} title="remove">×</button>
         </div>
         {container && node.children.length > 0 && (
@@ -862,7 +860,14 @@ export default class RestClientPlugin extends React.PureComponent {
   };
 
   addJson = (path) => () => {
-    this.setState({ jsonRoot: mapNodeAt(this.state.jsonRoot, path, (n) => ({ ...n, children: [...n.children, jsonNode()] })) });
+    this.setState({
+      jsonRoot: mapNodeAt(this.state.jsonRoot, path, (n) => {
+        // In an array, a new item copies the previous item's type, so once you've made
+        // one object you can keep adding objects with a single click.
+        const type = (n.type === 'array' && n.children.length) ? n.children[n.children.length - 1].type : 'string';
+        return { ...n, children: [...n.children, jsonNode(type)] };
+      })
+    });
   };
 
   removeJson = (path) => () => {

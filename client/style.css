@@ -30,6 +30,8 @@
   display: flex !important; flex-direction: column;
 }
 .rc-modal .modal-body { padding: 0 !important; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+/* footer as a flex row so Close can sit left and Save right (de-crowded) */
+.rc-modal .modal-footer { display: flex !important; align-items: center; gap: 12px; }
 
 .rc-modal-title { font-weight: 650; letter-spacing: -0.01em; }
 .rc-modal-sub { color: var(--rc-muted); font-weight: 400; }
@@ -96,8 +98,13 @@
 }
 .rc-url:focus { outline: none; border-color: var(--rc-accent); box-shadow: 0 0 0 3px rgba(0,149,255,0.15); }
 
+/* icons inherit the button's text color; never shrink */
+.rc-ic { flex: none; }
+button .rc-ic { margin-top: -1px; }
+
 .rc-send {
-  padding: 10px 28px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 24px;
   border: none;
   border-radius: var(--rc-r-md);
   background: var(--rc-accent);
@@ -246,6 +253,7 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
   border: 1px dashed var(--rc-border-2); border-radius: var(--rc-r); padding: 22px 16px; margin-bottom: 12px;
 }
 .rc-add {
+  display: inline-flex; align-items: center; gap: 6px;
   margin-top: 12px; align-self: flex-start;
   border: 1px dashed var(--rc-border-2); background: #fff; color: var(--rc-accent-d);
   border-radius: var(--rc-r-md); padding: 9px 16px; font-size: 12.5px; font-weight: 650; cursor: pointer;
@@ -447,6 +455,7 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-jn-index { flex: 1 1 30%; color: var(--rc-faint); font-family: var(--rc-mono); font-size: 12px; padding-left: 4px; }
 .rc-jn-row input.c-en { width: 15px; height: 15px; accent-color: var(--rc-accent); cursor: pointer; flex: none; }
 .rc-add-sm {
+  display: inline-flex; align-items: center; gap: 5px;
   border: 1px dashed var(--rc-border-2); background: #fff; color: var(--rc-accent-d);
   border-radius: var(--rc-r-sm); padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
@@ -545,7 +554,11 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-hv { color: var(--rc-ink); word-break: break-all; }
 
 /* ---------- footer buttons ---------- */
+/* Close sits on the left; Save + Send group on the right (host footer is a flex row). */
+.rc-close { margin-right: auto; }
+
 .rc-secondary {
+  display: inline-flex; align-items: center; gap: 7px;
   background: #fff;
   border: 1px solid var(--rc-border-2);
   border-radius: var(--rc-r-md);
@@ -557,6 +570,7 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-secondary:hover { background: var(--rc-bg-soft); color: var(--rc-ink); }
 
 .rc-save {
+  display: inline-flex; align-items: center; gap: 7px;
   background: #fff;
   border: 1px solid var(--rc-border-2);
   color: #4f46e5;

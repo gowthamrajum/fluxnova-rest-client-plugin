@@ -32,25 +32,24 @@ function isConnectorServiceTask(el) {
 }
 
 function makeBuildButton(element, services) {
+  // The properties panel already wraps each entry in its own container, so we render
+  // ONLY the button here — no extra bio-properties-panel-entry wrapper (that showed up
+  // as a stray empty box next to the button).
   return function BuildButton() {
     return h(
-      'div',
-      { class: 'bio-properties-panel-entry rc-build-entry' },
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'rc-build-btn',
-          onClick: () => {
-            if (window.__fluxnovaRestClient) {
-              // Hand the popup both the element and the model services it needs to
-              // prefill from / save back to the connector config (undoable edits).
-              window.__fluxnovaRestClient.open(element, services);
-            }
+      'button',
+      {
+        type: 'button',
+        class: 'rc-build-btn',
+        onClick: () => {
+          if (window.__fluxnovaRestClient) {
+            // Hand the popup both the element and the model services it needs to
+            // prefill from / save back to the connector config (undoable edits).
+            window.__fluxnovaRestClient.open(element, services);
           }
-        },
-        'Build request…'
-      )
+        }
+      },
+      'Build Request'
     );
   };
 }
