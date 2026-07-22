@@ -77,7 +77,7 @@ export default class RestClientPlugin extends React.PureComponent {
       body: '',
       form: [kvRow()],
       jsonRoot: jsonRoot(),           // structured JSON payload tree (nested objects/arrays)
-      payloadSave: 'json',            // how the payload is written to the connector: json | groovy | js
+      payloadSave: 'groovy',          // how the payload script is written to the connector: groovy | js
 
       // inputs / outputs
       inputs: {},            // token '${x}' -> test value
@@ -140,6 +140,7 @@ export default class RestClientPlugin extends React.PureComponent {
       form: pad(state.form, kvRow),
       outputs: pad(state.outputs, outRow),
       jsonRoot: (state.jsonRoot && state.jsonRoot.type) ? state.jsonRoot : jsonRoot(),
+      payloadSave: state.payloadSave === 'js' ? 'js' : 'groovy',   // payload is always a script now
       techExceptions: tech,
       bizExceptions: Array.isArray(state.bizExceptions) ? state.bizExceptions : []
     };
@@ -797,7 +798,7 @@ export default class RestClientPlugin extends React.PureComponent {
     return (
       <div className="rc-body-editor">
         <div className="rc-body-modes">
-          {[['none', 'none'], ['json', 'JSON'], ['raw', 'raw'], ['urlencoded', 'x-www-form-urlencoded'], ['form', 'form-data']].map(([val, lbl]) => (
+          {[['none', 'none'], ['json', 'Script'], ['raw', 'raw'], ['urlencoded', 'x-www-form-urlencoded'], ['form', 'form-data']].map(([val, lbl]) => (
             <label key={val} className={'rc-radio' + (bodyType === val ? ' on' : '')}>
               <input type="radio" name="bodyType" value={val} checked={bodyType === val} onChange={this.setField('bodyType')} />
               {lbl}
@@ -829,31 +830,22 @@ export default class RestClientPlugin extends React.PureComponent {
   // string, a Groovy script, or a JavaScript script — with a live preview of the exact
   // thing that gets saved. Scripts return the payload (the form a camunda:script input uses).
   renderPayloadPersist() {
-    const { payloadSave, bodyType } = this.state;
-    const asJson = payloadSave === 'json';
+    const { payloadSave } = this.state;
     const lang = payloadSave === 'js' ? 'js' : 'groovy';
-    const jsonStr = bodyType === 'json' ? compileJson(this.state.jsonRoot) : (this.state.body || '');
-    const preview = asJson ? jsonStr : payloadCode(this.state, lang);
-    const showFlag = asJson && bodyType === 'json';
-    const err = showFlag ? jsonError(jsonStr) : null;
     return (
       <div className="rc-code">
         <div className="rc-code-head">
           <span className="rc-code-lead">
             <span className="rc-code-title">Save payload as</span>
-            {showFlag && <span className={'rc-json-flag ' + (err ? 'bad' : 'ok')}>{err ? 'invalid JSON' : 'valid JSON'}</span>}
           </span>
           <div className="rc-seg small">
-            {[['json', 'JSON'], ['groovy', 'Groovy'], ['js', 'JavaScript']].map(([v, l]) => (
+            {[['groovy', 'Groovy'], ['js', 'JavaScript']].map(([v, l]) => (
               <button key={v} className={payloadSave === v ? 'on' : ''} onClick={() => this.setState({ payloadSave: v })}>{l}</button>
             ))}
           </div>
         </div>
-        <pre className="rc-code-body">{preview}</pre>
-        <p className="rc-code-note">{asJson
-          ? <>Written to the connector as a JSON string payload — <code>{'${var}'}</code> resolves at runtime.</>
-          : <>Written as a native <code>{lang === 'js' ? 'javascript' : 'groovy'}</code> script input parameter that returns the payload — <code>{'${var}'}</code> becomes a process-variable reference.</>}
-        </p>
+        <pre className="rc-code-body">{payloadCode(this.state, lang)}</pre>
+        <p className="rc-code-note">Written as a native <code>{lang === 'js' ? 'javascript' : 'groovy'}</code> script input parameter that returns the payload — <code>{'${var}'}</code> becomes a process-variable reference.</p>
       </div>
     );
   }
