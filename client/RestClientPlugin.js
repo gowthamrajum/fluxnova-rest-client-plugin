@@ -75,6 +75,7 @@ export default class RestClientPlugin extends React.PureComponent {
       body: '',
       form: [kvRow()],
       jsonRoot: jsonRoot(),           // structured JSON payload tree (nested objects/arrays)
+      payloadSave: 'json',            // how the payload is written to the connector: json | groovy | js
 
       // inputs / outputs
       inputs: {},            // token '${x}' -> test value
@@ -807,39 +808,49 @@ export default class RestClientPlugin extends React.PureComponent {
         {bodyType === 'json' && this.renderJsonBuilder()}
         {bodyType === 'raw' && this.renderRawBody()}
         {(bodyType === 'urlencoded' || bodyType === 'form') && this.renderKvTable('form', bodyType === 'form' ? 'Form Data' : 'URL-encoded Fields')}
-        {(bodyType === 'json' || bodyType === 'raw') && this.renderPayloadCode()}
+        {(bodyType === 'json' || bodyType === 'raw') && this.renderPayloadPersist()}
       </div>
     );
   }
 
-  // The payload as a build-and-serialize script (Groovy / JS), for a Script Task or a
-  // scripted connector input — ${var} becomes a process-variable reference.
-  renderPayloadCode() {
-    const { bizFormat } = this.state;
-    const code = payloadCode(this.state, bizFormat === 'js' ? 'js' : 'groovy');
+  // The connector's payload setting: choose whether the payload is written as a JSON
+  // string, a Groovy script, or a JavaScript script — with a live preview of the exact
+  // thing that gets saved. Scripts return the payload (the form a camunda:script input uses).
+  renderPayloadPersist() {
+    const { payloadSave, bodyType } = this.state;
+    const asJson = payloadSave === 'json';
+    const lang = payloadSave === 'js' ? 'js' : 'groovy';
+    const jsonStr = bodyType === 'json' ? compileJson(this.state.jsonRoot) : (this.state.body || '');
+    const preview = asJson ? jsonStr : payloadCode(this.state, lang);
+    const showFlag = asJson && bodyType === 'json';
+    const err = showFlag ? jsonError(jsonStr) : null;
     return (
       <div className="rc-code">
         <div className="rc-code-head">
-          <span className="rc-code-title">Payload as {bizFormat === 'js' ? 'JavaScript' : 'Groovy'}</span>
+          <span className="rc-code-lead">
+            <span className="rc-code-title">Save payload as</span>
+            {showFlag && <span className={'rc-json-flag ' + (err ? 'bad' : 'ok')}>{err ? 'invalid JSON' : 'valid JSON'}</span>}
+          </span>
           <div className="rc-seg small">
-            {BIZ_FORMATS.map(([v, l]) => (
-              <button key={v} className={bizFormat === v ? 'on' : ''} onClick={() => this.setState({ bizFormat: v })}>{l}</button>
+            {[['json', 'JSON'], ['groovy', 'Groovy'], ['js', 'JavaScript']].map(([v, l]) => (
+              <button key={v} className={payloadSave === v ? 'on' : ''} onClick={() => this.setState({ payloadSave: v })}>{l}</button>
             ))}
           </div>
         </div>
-        <pre className="rc-code-body">{code}</pre>
-        <p className="rc-code-note">Builds the body in a script — <code>{'${var}'}</code> reads from a process variable.</p>
+        <pre className="rc-code-body">{preview}</pre>
+        <p className="rc-code-note">{asJson
+          ? <>Written to the connector as a JSON string payload — <code>{'${var}'}</code> resolves at runtime.</>
+          : <>Written as a native <code>{lang === 'js' ? 'javascript' : 'groovy'}</code> script input parameter that returns the payload — <code>{'${var}'}</code> becomes a process-variable reference.</>}
+        </p>
       </div>
     );
   }
 
-  // Structured JSON builder: key / type / value rows compile to a JSON body, live-previewed.
   // Structured JSON builder — a tree, so any shape works (nested objects, arrays,
-  // arrays of objects, object values that are arrays, …). Compiles to a live-previewed body.
+  // arrays of objects, object values that are arrays, …). The preview + save form
+  // live in renderPayloadPersist below.
   renderJsonBuilder() {
     const root = this.state.jsonRoot;
-    const compiled = compileJson(root);
-    const err = jsonError(compiled);
     return (
       <div className="rc-json">
         <div className="rc-json-rootbar">
@@ -852,13 +863,6 @@ export default class RestClientPlugin extends React.PureComponent {
         </div>
         <div className="rc-json-tree">
           {root.children.map((c, i) => this.renderJsonNode(c, [i], root.type))}
-        </div>
-        <div className="rc-payload-preview">
-          <div className="rc-preview-head">
-            <span>Payload preview</span>
-            <span className={'rc-json-flag ' + (err ? 'bad' : 'ok')}>{err ? 'invalid JSON' : 'valid JSON'}</span>
-          </div>
-          <pre className="rc-preview-body">{compiled}</pre>
         </div>
       </div>
     );

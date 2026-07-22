@@ -19,7 +19,7 @@
  * bpmn-js wrapper that applies the result through modeling (undoable, marks dirty).
  */
 import { navGroovy } from './navigation';
-import { payloadString, contentTypeFor } from './payload';
+import { payloadString, contentTypeFor, payloadCode } from './payload';
 import { compileHandler, HANDLER_OUTPUT, needsRetry, RETRY_CYCLE } from './connectorCompile';
 
 export const CONNECTOR_ID = 'http-connector';
@@ -29,7 +29,7 @@ export const CONFIG_PROP = 'fluxnova:restClientConfig';
 const PERSIST_KEYS = [
   'method', 'url', 'params', 'headers',
   'authType', 'bearerToken', 'basicUser', 'basicPass', 'apiKeyName', 'apiKeyValue', 'apiKeyIn',
-  'bodyType', 'rawType', 'body', 'form', 'jsonRoot',
+  'bodyType', 'rawType', 'body', 'form', 'jsonRoot', 'payloadSave',
   'inputs', 'outputs',
   'techExceptions', 'bizExceptions', 'bizFormat'
 ];
@@ -142,22 +142,37 @@ function outputParams(create, outputs) {
 }
 
 // Header rows augmented with a Content-Type when the body implies one and none is set.
-function headerRowsFor(state, payload) {
+function headerRowsFor(state, hasPayload) {
   const rows = (state.headers || []).filter((r) => r.enabled && r.key);
   const ct = contentTypeFor(state);
   const hasCt = rows.some((r) => /^content-type$/i.test(r.key));
-  if (payload != null && ct && !hasCt) return [...rows, { key: 'Content-Type', value: ct, enabled: true }];
+  if (hasPayload && ct && !hasCt) return [...rows, { key: 'Content-Type', value: ct, enabled: true }];
   return rows;
 }
 
+// The payload inputParameter — a plain JSON string, or a native script that returns the
+// payload, per the "Save payload as" setting. Returns null when there's no body.
+function payloadInput(create, state) {
+  const mode = state.payloadSave || 'json';
+  const scripted = (mode === 'groovy' || mode === 'js') && (state.bodyType === 'json' || state.bodyType === 'raw');
+  if (scripted) {
+    const script = payloadCode(state, mode);
+    if (!script) return null;
+    const scriptFormat = mode === 'js' ? 'javascript' : 'groovy';
+    return create('camunda:InputParameter', { name: 'payload', definition: create('camunda:Script', { scriptFormat, value: script }) });
+  }
+  const value = payloadString(state);
+  return value != null ? strInput(create, 'payload', value) : null;
+}
+
 function buildConnector(create, state) {
-  const payload = payloadString(state);
+  const payload = payloadInput(create, state);
   const inputs = [
     strInput(create, 'url', state.url || ''),
     strInput(create, 'method', state.method || 'GET'),
-    headersInput(create, headerRowsFor(state, payload))
+    headersInput(create, headerRowsFor(state, !!payload))
   ];
-  if (payload != null) inputs.push(strInput(create, 'payload', payload));
+  if (payload) inputs.push(payload);
 
   // Output params: the user's variable mappings + the native exception-handling script.
   const outputs = outputParams(create, state.outputs);

@@ -138,21 +138,22 @@ function codeNode(node, lang, indent) {
   return codeScalar(node, lang);
 }
 
-// Generate a script (lang = 'groovy' | 'js') that builds the payload and serializes it
-// to a `payload` variable. Covers the JSON builder and the raw editor. null otherwise.
+// Generate a script (lang = 'groovy' | 'js') whose RESULT is the payload — the return
+// form a connector `camunda:script` input parameter uses (also what the preview shows).
+// Covers the JSON builder and the raw editor. null otherwise.
 export function payloadCode(state, lang) {
   const js = lang === 'js';
   if (state.bodyType === 'json') {
     const lit = codeNode(state.jsonRoot || jsonRoot(), lang, 0);
     return js
-      ? 'var payload = JSON.stringify(' + lit + ');'
-      : 'import groovy.json.JsonOutput\n\ndef payload = JsonOutput.toJson(' + lit + ')';
+      ? 'JSON.stringify(' + lit + ')'
+      : 'import groovy.json.JsonOutput\n\nJsonOutput.toJson(' + lit + ')';
   }
   if (state.bodyType === 'raw') {
     const b = state.body || '';
     return js
-      ? 'var payload = `' + b.replace(/\\/g, '\\\\').replace(/`/g, '\\`') + '`;'
-      : 'def payload = """' + b.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '"""';
+      ? '`' + b.replace(/\\/g, '\\\\').replace(/`/g, '\\`') + '`'
+      : '"""' + b.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '"""';
   }
   return null;
 }

@@ -66,6 +66,25 @@ describe('writeConnector output shape', () => {
   });
 });
 
+describe('payload saved as a script', () => {
+  it('writes payload as a native camunda:Script input when payloadSave is groovy', () => {
+    const st = {
+      ...fullState(),
+      bodyType: 'json',
+      jsonRoot: { key: '', type: 'object', enabled: true, children: [{ key: 'id', type: 'expression', value: 'orderId', enabled: true, children: [] }] },
+      payloadSave: 'groovy'
+    };
+    const values = buildExtensionValues(create, { extensionElements: null }, st);
+    const connector = values.find((v) => v.$type === 'camunda:Connector');
+    const payload = connector.inputOutput.inputParameters.find((p) => p.name === 'payload');
+    expect(payload.value).toBeUndefined();
+    expect(payload.definition.$type).toBe('camunda:Script');
+    expect(payload.definition.scriptFormat).toBe('groovy');
+    expect(payload.definition.value).toContain('JsonOutput.toJson(');
+    expect(payload.definition.value).toContain("'id': orderId");
+  });
+});
+
 describe('round-trip via the JSON snapshot', () => {
   it('readConnector restores the exact design-time state (incl. test data + outputs)', () => {
     const st = fullState();

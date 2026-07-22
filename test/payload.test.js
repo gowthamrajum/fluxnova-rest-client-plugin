@@ -91,23 +91,25 @@ describe('payloadCode — payload as a script', () => {
       c('sizes', 'array', [n('', 'S'), n('', 'M')])
     ])
   };
-  it('Groovy: JsonOutput.toJson over a map literal; expression -> variable ref', () => {
+  it('Groovy: returns JsonOutput.toJson over a map literal; expression -> variable ref', () => {
     const g = payloadCode(st, 'groovy');
     expect(g).toContain('import groovy.json.JsonOutput');
-    expect(g).toContain('def payload = JsonOutput.toJson(');
+    expect(g).toContain('JsonOutput.toJson(');
+    expect(g).not.toContain('def payload');        // return form, not an assignment
     expect(g).toContain("'orderId': orderId");     // expression becomes a bare var
     expect(g).toContain("'quantity': 3");
     expect(g).toContain("'sizes': [");
   });
-  it('JS: JSON.stringify over an object literal', () => {
+  it('JS: returns JSON.stringify over an object literal', () => {
     const j = payloadCode(st, 'js');
-    expect(j).toContain('var payload = JSON.stringify(');
+    expect(j).toContain('JSON.stringify(');
+    expect(j).not.toContain('var payload');
     expect(j).toContain('"orderId": orderId');
     expect(j).toContain('"quantity": 3');
   });
-  it('raw mode wraps the body as an interpolating string', () => {
-    expect(payloadCode({ bodyType: 'raw', body: '{"id":"${x}"}' }, 'groovy')).toContain('def payload = """{"id":"${x}"}"""');
-    expect(payloadCode({ bodyType: 'raw', body: 'hi ${x}' }, 'js')).toContain('var payload = `hi ${x}`;');
+  it('raw mode returns the body as an interpolating string', () => {
+    expect(payloadCode({ bodyType: 'raw', body: '{"id":"${x}"}' }, 'groovy')).toBe('"""{"id":"${x}"}"""');
+    expect(payloadCode({ bodyType: 'raw', body: 'hi ${x}' }, 'js')).toBe('`hi ${x}`');
   });
 });
 
