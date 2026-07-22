@@ -1,0 +1,15 @@
+fluxnova-rest-client-plugin
+Copyright 2026 gowthamrajum
+
+This product includes software developed by the project contributors.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This plugin targets the FluxNova Modeler (finos/fluxnova-modeler), the FINOS
+fork of the Camunda 7 desktop Modeler, and is compatible with the upstream
+Camunda 7 Modeler. "FluxNova", "FINOS", and "Camunda" are trademarks of their
+respective owners; this project is not affiliated with or endorsed by them.
