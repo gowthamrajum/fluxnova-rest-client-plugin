@@ -153,6 +153,49 @@ export default class RestClientPlugin extends React.PureComponent {
   close = () => this.setState({ open: false });
   setField = (field) => (e) => this.setState({ [field]: e.target.value });
 
+  /* ---- workspace: resizable modal that remembers its size ---- */
+
+  // Ref on the resize grip. Fires when the modal opens; applies the saved (or a
+  // near-full-screen default) size to the host modal element inline.
+  applyWorkspaceSize = (el) => {
+    this.resizeGrip = el || null;
+    if (!el) return;
+    const modal = el.closest('.rc-modal');
+    if (!modal) return;
+    let w = 0, h = 0;
+    try { w = parseInt(localStorage.getItem('fnrc.ws.w'), 10) || 0; h = parseInt(localStorage.getItem('fnrc.ws.h'), 10) || 0; } catch (_) { /* no storage */ }
+    if (!w) w = Math.min(1400, Math.round(window.innerWidth * 0.94));
+    if (!h) h = Math.round(window.innerHeight * 0.88);
+    modal.style.width = w + 'px';
+    modal.style.height = h + 'px';
+  };
+
+  startResize = (e) => {
+    const modal = this.resizeGrip && this.resizeGrip.closest('.rc-modal');
+    if (!modal) return;
+    e.preventDefault();
+    const rect = modal.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY, startW = rect.width, startH = rect.height;
+    const MINW = 760, MINH = 460;
+    const maxW = window.innerWidth * 0.98, maxH = window.innerHeight * 0.96;
+    // The modal is center-anchored, so each edge moves half the delta — scale by 2 to track the pointer.
+    const onMove = (ev) => {
+      modal.style.width = Math.min(maxW, Math.max(MINW, startW + (ev.clientX - startX) * 2)) + 'px';
+      modal.style.height = Math.min(maxH, Math.max(MINH, startH + (ev.clientY - startY) * 2)) + 'px';
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try {
+        const r = modal.getBoundingClientRect();
+        localStorage.setItem('fnrc.ws.w', String(Math.round(r.width)));
+        localStorage.setItem('fnrc.ws.h', String(Math.round(r.height)));
+      } catch (_) { /* no storage */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   updateRow = (field, i, prop) => (e) => {
     const val = prop === 'enabled' ? e.target.checked : e.target.value;
     const rows = this.state[field].slice();
@@ -361,6 +404,7 @@ export default class RestClientPlugin extends React.PureComponent {
             <div className="rc-side">
               {this.renderInputsSection()}
             </div>
+            <div className="rc-resize" ref={this.applyWorkspaceSize} onPointerDown={this.startResize} title="Drag to resize" />
           </div>
         </Modal.Body>
         <Modal.Footer>

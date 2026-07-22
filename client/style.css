@@ -22,9 +22,14 @@
   --rc-shadow-lg: 0 4px 14px rgba(16,24,40,0.08);
 }
 
-/* Make the host Modal roomy enough for the builder + sidebar */
-.rc-modal { width: 1180px !important; max-width: 96vw !important; border-radius: 16px !important; overflow: hidden; }
-.rc-modal .modal-body { padding: 0 !important; }
+/* Workspace modal: a filling flex column, near-full-screen by default, resizable.
+   Width/height are set inline by the resize logic (persisted); CSS caps + lays out. */
+.rc-modal {
+  max-width: 96vw !important; max-height: 94vh !important;
+  border-radius: 16px !important; overflow: hidden;
+  display: flex !important; flex-direction: column;
+}
+.rc-modal .modal-body { padding: 0 !important; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
 .rc-modal-title { font-weight: 650; letter-spacing: -0.01em; }
 .rc-modal-sub { color: var(--rc-muted); font-weight: 400; }
@@ -36,6 +41,7 @@
   font-size: 13px;
   color: var(--rc-ink);
   background: #fff;
+  position: relative;
 }
 
 /* ---------- URL bar ---------- */
@@ -106,13 +112,14 @@
 .rc-send:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 
 /* ---------- split: left executor + right Inputs/Outputs sidebar ---------- */
-.rc-split { flex-direction: row !important; align-items: stretch; }
-.rc-exec-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rc-split { flex-direction: row !important; align-items: stretch; height: 100%; min-height: 0; }
+.rc-exec-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; border-radius: 3px; color: #374151; font-size: 0.92em; }
 
 .rc-side {
   width: 340px;
   flex-shrink: 0;
+  min-height: 0;
   border-left: 1px solid var(--rc-border);
   background: var(--rc-panel);
   display: flex;
@@ -294,12 +301,13 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 
 .rc-tabbody {
   padding: 18px 20px;
-  min-height: 210px;
-  max-height: 300px;
+  flex: 0 1 auto;
+  min-height: 150px;
+  max-height: 55%;
   overflow: auto;
 }
-/* exception tabs have no response panel below — let them use the freed height */
-.rc-tabbody.tall { max-height: 520px; }
+/* exception tabs have no response panel below — let them fill the freed height */
+.rc-tabbody.tall { flex: 1 1 auto; max-height: none; }
 
 /* ---------- key/value tables ---------- */
 .rc-kv-head { display: flex; align-items: center; margin-bottom: 8px; }
@@ -385,10 +393,11 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-response {
   border-top: 1px solid var(--rc-border);
   background: #fafafa;
-  min-height: 200px;
-  max-height: 320px;
+  flex: 1 1 auto;
+  min-height: 180px;
   display: flex;
   flex-direction: column;
+  overflow: auto;
 }
 .rc-resp-empty { padding: 34px 16px; text-align: center; color: var(--rc-faint); }
 .rc-resp-empty span { display: block; font-weight: 600; color: var(--rc-muted); margin-bottom: 4px; }
@@ -481,6 +490,17 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 .rc-save:hover:not(:disabled) { background: #eef2ff; border-color: #c7d2fe; }
 .rc-save:disabled { opacity: .5; cursor: not-allowed; }
 .rc-save.saved { background: #ecfdf5; border-color: #a7f3d0; color: #059669; }
+
+/* ---------- workspace resize grip (bottom-right corner) ---------- */
+.rc-resize {
+  position: absolute; right: 0; bottom: 0; width: 20px; height: 20px;
+  cursor: nwse-resize; z-index: 5; touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 0 50%, var(--rc-border-2) 50% 58%, transparent 58% 66%, var(--rc-border-2) 66% 74%, transparent 74%);
+}
+.rc-resize:hover { background:
+    linear-gradient(135deg, transparent 0 50%, var(--rc-faint) 50% 58%, transparent 58% 66%, var(--rc-faint) 66% 74%, transparent 74%);
+}
 
 /* ---------- properties-panel Build button ---------- */
 .rc-build-entry { padding: 6px 0 10px; }
