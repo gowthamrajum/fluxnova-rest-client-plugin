@@ -120,7 +120,8 @@ export function needsRetry(state) {
 export function compileHandler(state) {
   const tech = activeTech(state);
   const biz = activeBiz(state);
-  if (!tech.length && !biz.length) return null;
+  const parse = (state.parseScript || '').trim();
+  if (!tech.length && !biz.length && !parse) return null;
 
   const lang = state.bizFormat === 'js' ? 'js' : 'groovy';
   const L = preamble(lang).slice();
@@ -133,6 +134,13 @@ export function compileHandler(state) {
       actionLines(lang, r.actions, '  ', ctx).forEach((x) => L.push(x));
       L.push('}');
     });
+    L.push('');
+  }
+
+  if (parse) {
+    // The user's parse script — runs in the output mapping (execution.setVariable to persist).
+    L.push('// --- Parse the data ---');
+    parse.split(/\r?\n/).forEach((line) => L.push(line));
     L.push('');
   }
 

@@ -17,7 +17,7 @@ function fullState() {
     apiKeyName: '', apiKeyValue: '', apiKeyIn: 'header',
     bodyType: 'raw', rawType: 'json', body: '{"note":"${msg}"}', form: [],
     inputs: { '${orderId}': '99', '${token}': 'secret', '${msg}': 'hi' },
-    outputs: [{ name: 'status', path: 'status' }, { name: 'firstId', path: 'items[0].id' }],
+    parseScript: "execution.setVariable('firstId', body?.items?.getAt(0)?.id)",
     techExceptions: {
       rules: [
         { status: 'client', code: '', actions: { log: { on: true, value: 'client failed' }, incident: { on: false, value: '' }, error: { on: true, value: 'http-client-error' }, retry: { on: false } } },
@@ -53,13 +53,14 @@ describe('writeConnector output shape', () => {
     expect(byName('payload').value).toBe('{"note":"${msg}"}');
 
     const outs = connector.inputOutput.outputParameters;
-    // user output mappings + the compiled exception-handling script
-    expect(outs.map((o) => o.name)).toEqual(['status', 'firstId', 'restClientChecks']);
-    expect(outs[1].definition.$type).toBe('camunda:Script');
-    expect(outs[1].definition.value).toContain('body?.items?.getAt(0)?.id');
-    const handler = outs.find((o) => o.name === 'restClientChecks');
+    // a single native script output: technical checks + parse + data-exception checks
+    expect(outs.map((o) => o.name)).toEqual(['restClientChecks']);
+    const handler = outs[0];
+    expect(handler.definition.$type).toBe('camunda:Script');
     expect(handler.definition.scriptFormat).toBe('groovy');
     expect(handler.definition.value).toContain('if (sc >= 400 && sc < 500)');
+    expect(handler.definition.value).toContain('// --- Parse the data ---');
+    expect(handler.definition.value).toContain("execution.setVariable('firstId'");
 
     const props = values.find((v) => v.$type === 'camunda:Properties');
     expect(props.values.find((p) => p.name === CONFIG_PROP)).toBeTruthy();
@@ -98,7 +99,7 @@ describe('round-trip via the JSON snapshot', () => {
     expect(restored.authType).toBe('bearer');
     expect(restored.bearerToken).toBe('${token}');
     expect(restored.inputs).toEqual(st.inputs);      // test data survives
-    expect(restored.outputs).toEqual(st.outputs);    // output mappings survive
+    expect(restored.parseScript).toEqual(st.parseScript); // parse script survives
     expect(restored.techExceptions).toEqual(st.techExceptions); // exception handling survives
     expect(restored.bizExceptions).toEqual(st.bizExceptions);
     expect(restored.bizFormat).toBe('groovy');

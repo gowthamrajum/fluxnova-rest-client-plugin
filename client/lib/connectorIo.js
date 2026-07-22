@@ -18,7 +18,6 @@
  * moddle) so it is unit-testable without Electron. `writeConnector` is the thin
  * bpmn-js wrapper that applies the result through modeling (undoable, marks dirty).
  */
-import { navGroovy } from './navigation';
 import { payloadString, contentTypeFor, payloadCode } from './payload';
 import { compileHandler, HANDLER_OUTPUT, needsRetry } from './connectorCompile';
 import { retryCycle } from './exceptions';
@@ -31,7 +30,7 @@ const PERSIST_KEYS = [
   'method', 'url', 'params', 'headers',
   'authType', 'bearerToken', 'basicUser', 'basicPass', 'apiKeyName', 'apiKeyValue', 'apiKeyIn',
   'bodyType', 'rawType', 'body', 'form', 'jsonRoot', 'payloadSave',
-  'inputs', 'outputs',
+  'inputs', 'parseScript',
   'techExceptions', 'bizExceptions', 'bizFormat', 'retryPolicy'
 ];
 
@@ -127,21 +126,6 @@ function headersInput(create, rows) {
   return create('camunda:InputParameter', { name: 'headers', definition: map });
 }
 
-// One groovy output param per Outputs row: parse `response`, then null-safe navigate.
-function outputParams(create, outputs) {
-  return (outputs || [])
-    .filter((o) => o.name && o.path)
-    .map((o) => {
-      const script = [
-        'import groovy.json.JsonSlurper',
-        'def body = response ? new JsonSlurper().parseText(response) : null',
-        navGroovy('body', o.path)
-      ].join('\n');
-      const def = create('camunda:Script', { scriptFormat: 'groovy', value: script });
-      return create('camunda:OutputParameter', { name: o.name, definition: def });
-    });
-}
-
 // Header rows augmented with a Content-Type when the body implies one and none is set.
 function headerRowsFor(state, hasPayload) {
   const rows = (state.headers || []).filter((r) => r.enabled && r.key);
@@ -175,8 +159,8 @@ function buildConnector(create, state) {
   ];
   if (payload) inputs.push(payload);
 
-  // Output params: the user's variable mappings + the native exception-handling script.
-  const outputs = outputParams(create, state.outputs);
+  // Output: the native script that parses the response, sets variables, and handles exceptions.
+  const outputs = [];
   const handler = compileHandler(state);
   if (handler) {
     outputs.push(create('camunda:OutputParameter', {

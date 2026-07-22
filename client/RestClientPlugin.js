@@ -5,7 +5,6 @@ import Modal from 'camunda-modeler-plugin-helpers/components/Modal';
 import './style.css';
 
 import { METHODS, BODY_METHODS } from './lib/constants';
-import { navigate } from './lib/paths';
 import { detectExpressions } from './lib/expressions';
 import { activeRows, buildRequest } from './lib/request';
 import { JSON_TYPES, jsonNode, jsonRoot, isContainer, compileJson, jsonError, formatJson, mapNodeAt, payloadCode } from './lib/payload';
@@ -24,7 +23,6 @@ const REQ_TABS = [['params', 'Params'], ['authorization', 'Authorization'], ['he
 const RESP_TABS = [['exceptions', 'Exception Handling'], ['result', 'Response Handling']];
 
 const kvRow = () => ({ key: '', value: '', desc: '', enabled: true });
-const outRow = () => ({ name: '', path: '' });
 
 /**
  * Postman-style REST client popup with a right-hand Inputs/Outputs sidebar.
@@ -80,9 +78,9 @@ export default class RestClientPlugin extends React.PureComponent {
       jsonRoot: jsonRoot(),           // structured JSON payload tree (nested objects/arrays)
       payloadSave: 'groovy',          // how the payload script is written to the connector: groovy | js
 
-      // inputs / outputs
+      // inputs / parse
       inputs: {},            // token '${x}' -> test value
-      outputs: [outRow()],   // { name, path }
+      parseScript: '',       // "Parse the data" — custom script that extracts + sets variables
 
       // exception handling (engine-agnostic design-time metadata; persisted in snapshot)
       techExceptions: defaultTechExceptions(),   // { rules: [{ status, code, actions }] }
@@ -140,7 +138,6 @@ export default class RestClientPlugin extends React.PureComponent {
       params: pad(state.params, kvRow),
       headers: pad(state.headers, kvRow),
       form: pad(state.form, kvRow),
-      outputs: pad(state.outputs, outRow),
       jsonRoot: (state.jsonRoot && state.jsonRoot.type) ? state.jsonRoot : jsonRoot(),
       payloadSave: state.payloadSave === 'js' ? 'js' : 'groovy',   // payload is always a script now
       techExceptions: tech,
@@ -241,7 +238,7 @@ export default class RestClientPlugin extends React.PureComponent {
   respCount(tab) {
     const s = this.state;
     if (tab === 'exceptions') return s.techExceptions.rules.length;
-    if (tab === 'result') return s.outputs.filter((o) => o.name && o.path).length + s.bizExceptions.length;
+    if (tab === 'result') return (s.parseScript.trim() ? 1 : 0) + s.bizExceptions.length;
     return 0;
   }
 
@@ -261,22 +258,6 @@ export default class RestClientPlugin extends React.PureComponent {
   /* ---- expression inputs (detection + substitution live in lib/expressions.js) ---- */
 
   setInput = (tok) => (e) => this.setState({ inputs: { ...this.state.inputs, [tok]: e.target.value } });
-
-  /* ---- output mapping ---- */
-
-  updateOut = (i, prop) => (e) => {
-    const rows = this.state.outputs.slice();
-    rows[i] = { ...rows[i], [prop]: e.target.value };
-    if (i === rows.length - 1 && (rows[i].name || rows[i].path)) rows.push(outRow());
-    this.setState({ outputs: rows });
-  };
-
-  removeOut = (i) => () => {
-    const rows = this.state.outputs.slice();
-    rows.splice(i, 1);
-    if (!rows.length) rows.push(outRow());
-    this.setState({ outputs: rows });
-  };
 
   /* ---- request send (build + path engine + codegen live in lib/) ---- */
 
@@ -497,35 +478,18 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  renderOutputs() {
-    const { outputs, response } = this.state;
-    const body = response && response.body;
+  renderParseScript() {
+    const { parseScript, bizFormat } = this.state;
     return (
-      <table className="rc-io-table rc-io-card">
-        <thead>
-          <tr><th>Variable</th><th>JSON path</th><th className="rc-io-xcol" /></tr>
-        </thead>
-        <tbody>
-          {outputs.map((o, i) => {
-            const val = (o.path && body !== undefined) ? navigate(body, o.path) : undefined;
-            const resolved = o.path ? (val !== undefined ? this.previewVal(val) : (response ? '—' : '')) : '';
-            return (
-              <tr key={i}>
-                <td className="rc-io-inputcell">
-                  <input className="rc-io-input" placeholder="variable" value={o.name} onChange={this.updateOut(i, 'name')} />
-                </td>
-                <td className="rc-io-inputcell">
-                  <input className="rc-io-input" placeholder="json path" value={o.path} onChange={this.updateOut(i, 'path')} />
-                  {resolved !== '' && <span className={'rc-io-resolved' + (val === undefined ? ' miss' : '')}>{resolved}</span>}
-                </td>
-                <td className="rc-io-xcol">
-                  <button className="rc-del" onClick={this.removeOut(i)} title="remove">×</button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <textarea
+        className="rc-biz-script rc-parse-script"
+        spellCheck={false}
+        placeholder={bizFormat === 'groovy'
+          ? "def data = body\nexecution.setVariable('authToken', data?.access_token)\nexecution.setVariable('expiresIn', data?.expires_in)"
+          : "var data = body;\nexecution.setVariable('authToken', data && data.access_token);"}
+        value={parseScript}
+        onChange={this.setField('parseScript')}
+      />
     );
   }
 
@@ -701,8 +665,8 @@ export default class RestClientPlugin extends React.PureComponent {
     return (
       <div className="rc-exc rc-biz">
         <div className="rc-exc-subhead">Parse the data</div>
-        <p className="rc-exc-hint">Extract response fields into process variables with a JSON path (<code>data[0].id</code>, <code>items[*].name</code>). Values preview live against the last response.</p>
-        {this.renderOutputs()}
+        <p className="rc-exc-hint">A script (in the language below) that reads the response and sets process variables with <code>execution.setVariable(…)</code>. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>, <code>execution</code>.</p>
+        {this.renderParseScript()}
 
         <div className="rc-exc-subhead rc-exc-subhead-2">Data Exception</div>
         <p className="rc-exc-hint">If parsing or validating the response fails, run these actions. Add a check — a script (in the language chosen below); if it <b>throws</b>, its actions fire. In scope: <code>body</code> (parsed JSON), <code>response</code> (raw), <code>statusCode</code>, <code>headers</code>.</p>
@@ -754,14 +718,6 @@ export default class RestClientPlugin extends React.PureComponent {
     rows.splice(i, 1);
     this.setState({ bizExceptions: rows });
   };
-
-  previewVal(v) {
-    if (v === null) return 'null';
-    if (typeof v === 'object') {
-      try { const s = JSON.stringify(v); return s.length > 60 ? s.slice(0, 57) + '…' : s; } catch (_) { return String(v); }
-    }
-    return String(v);
-  }
 
   /* ---- request editors ---- */
 

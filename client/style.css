@@ -335,6 +335,7 @@ code { font-family: var(--rc-mono); background: #eef2f5; padding: 1px 4px; borde
 }
 .rc-biz-script::placeholder { color: #64748b; }
 .rc-biz-script:focus { outline: none; box-shadow: 0 0 0 2px var(--rc-accent); }
+.rc-parse-script { max-width: 760px; min-height: 110px; }
 
 /* ---------- tabs: request group | response-handling group ---------- */
 .rc-tabs {
