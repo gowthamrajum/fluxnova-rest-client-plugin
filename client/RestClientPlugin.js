@@ -15,9 +15,9 @@ import {
   defaultTechExceptions, techCustomRow, bizRow
 } from './lib/exceptions';
 
-const REQ_TABS = ['params', 'authorization', 'headers', 'body'];
-// Response-handling sub-tabs in the right sidebar (below the always-on Inputs section).
-const SIDE_TABS = [['outputs', 'Outputs'], ['technical', 'Technical Exceptions'], ['business', 'Business Exceptions']];
+// Left-column tabs, grouped: request definition | response handling. All share `state.tab`.
+const REQ_TABS = [['params', 'Params'], ['authorization', 'Authorization'], ['headers', 'Headers'], ['body', 'Body']];
+const RESP_TABS = [['outputs', 'Outputs'], ['technical', 'Technical'], ['business', 'Business']];
 
 const kvRow = () => ({ key: '', value: '', desc: '', enabled: true });
 const outRow = () => ({ name: '', path: '' });
@@ -75,9 +75,6 @@ export default class RestClientPlugin extends React.PureComponent {
       // inputs / outputs
       inputs: {},            // token '${x}' -> test value
       outputs: [outRow()],   // { name, path }
-
-      // response-handling sidebar sub-tab
-      sideTab: 'outputs',
 
       // exception handling (engine-agnostic design-time metadata; persisted in snapshot)
       techExceptions: defaultTechExceptions(),   // { classes:[…], custom:[…] }
@@ -176,6 +173,31 @@ export default class RestClientPlugin extends React.PureComponent {
     if (tab === 'authorization') return this.state.authType !== 'none' ? 1 : 0;
     if (tab === 'body') return this.state.bodyType !== 'none' ? 1 : 0;
     return 0;
+  }
+
+  // Badge counts for the response-handling tabs.
+  respCount(tab) {
+    const s = this.state;
+    if (tab === 'outputs') return s.outputs.filter((o) => o.name && o.path).length;
+    if (tab === 'technical') {
+      const t = s.techExceptions;
+      return t.classes.filter((c) => c.action !== 'ignore').length + t.custom.filter((r) => r.code).length;
+    }
+    if (tab === 'business') return s.bizExceptions.filter((r) => r.name || r.script).length;
+    return 0;
+  }
+
+  renderTab(t, label, n) {
+    return (
+      <button
+        key={t}
+        className={'rc-tab' + (this.state.tab === t ? ' active' : '')}
+        onClick={() => this.setState({ tab: t })}
+      >
+        {label}
+        {n > 0 && <span className="rc-badge">{n}</span>}
+      </button>
+    );
   }
 
   /* ---- expression inputs (detection + substitution live in lib/expressions.js) ---- */
@@ -310,33 +332,29 @@ export default class RestClientPlugin extends React.PureComponent {
                 </div>
 
                 <div className="rc-tabs">
-                  {REQ_TABS.map((t) => {
-                    const n = this.countFor(t);
-                    return (
-                      <button
-                        key={t}
-                        className={'rc-tab' + (tab === t ? ' active' : '')}
-                        onClick={() => this.setState({ tab: t })}
-                      >
-                        {t[0].toUpperCase() + t.slice(1)}
-                        {n > 0 && <span className="rc-badge">{n}</span>}
-                      </button>
-                    );
-                  })}
+                  <div className="rc-tabgroup">
+                    {REQ_TABS.map(([t, l]) => this.renderTab(t, l, this.countFor(t)))}
+                  </div>
+                  <span className="rc-tabsep" />
+                  <div className="rc-tabgroup">
+                    {RESP_TABS.map(([t, l]) => this.renderTab(t, l, this.respCount(t)))}
+                  </div>
                 </div>
 
-                <div className="rc-tabbody">
+                <div className={'rc-tabbody' + (tab === 'technical' || tab === 'business' ? ' tall' : '')}>
                   {tab === 'params' && this.renderKvTable('params', 'Query Params')}
                   {tab === 'authorization' && this.renderAuth()}
                   {tab === 'headers' && this.renderKvTable('headers', 'Headers')}
                   {tab === 'body' && this.renderBody()}
+                  {tab === 'outputs' && this.renderOutputs()}
+                  {tab === 'technical' && this.renderTechExceptions()}
+                  {tab === 'business' && this.renderBizExceptions()}
                 </div>
 
-                {this.renderResponse()}
+                {tab !== 'technical' && tab !== 'business' && this.renderResponse()}
             </div>
             <div className="rc-side">
               {this.renderInputsSection()}
-              {this.renderHandlingSection()}
             </div>
           </div>
         </Modal.Body>
@@ -405,38 +423,15 @@ export default class RestClientPlugin extends React.PureComponent {
     );
   }
 
-  // Response handling: sub-tabbed Outputs / Technical Exceptions / Business Exceptions.
-  renderHandlingSection() {
-    const { sideTab } = this.state;
-    return (
-      <div className="rc-side-sec rc-side-handling">
-        <div className="rc-side-subtabs">
-          {SIDE_TABS.map(([v, l]) => (
-            <button
-              key={v}
-              className={'rc-side-subtab' + (sideTab === v ? ' active' : '')}
-              onClick={() => this.setState({ sideTab: v })}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        <div className="rc-side-scroll">
-          {sideTab === 'outputs' && this.renderOutputs()}
-          {sideTab === 'technical' && this.renderTechExceptions()}
-          {sideTab === 'business' && this.renderBizExceptions()}
-        </div>
-      </div>
-    );
-  }
-
   renderOutputs() {
     const { outputs, response } = this.state;
     const body = response && response.body;
     return (
-      <table className="rc-io-table">
+      <div className="rc-exc">
+        <p className="rc-exc-hint">Map response fields to process variables with a JSON path (<code>data[0].id</code>, <code>items[*].name</code>). Values preview live against the last response.</p>
+      <table className="rc-io-table rc-io-card">
         <thead>
-          <tr><th>Name</th><th>Value</th><th className="rc-io-xcol" /></tr>
+          <tr><th>Variable</th><th>JSON path</th><th className="rc-io-xcol" /></tr>
         </thead>
         <tbody>
           {outputs.map((o, i) => {
@@ -459,6 +454,7 @@ export default class RestClientPlugin extends React.PureComponent {
           })}
         </tbody>
       </table>
+      </div>
     );
   }
 
